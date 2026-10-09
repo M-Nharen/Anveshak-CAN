@@ -26,7 +26,7 @@ from .settings import Settings
 
 log = logging.getLogger("anv_dashboard")
 
-PAGES = ("overview", "nodes", "drive")
+PAGES = ("overview", "nodes", "drive", "errors")
 
 
 @dataclass
@@ -56,6 +56,8 @@ class Hub:
         self.control = ControlManager(settings, clock)
         self.rates = views.RateTracker()
         self.state: dict[str, Any] | None = None
+        self.events: list[dict[str, Any]] = []
+        self._events_seq = 0
         self.clients: dict[str, Client] = {}
         self._ids = itertools.count(1)
         self._tasks: list[asyncio.Task[None]] = []
@@ -112,6 +114,19 @@ class Hub:
             self.clock(),
             {"tx_frames": bus["tx_frames"], "error_frames": bus["error_frames"]},
         )
+        try:
+            reply = await self.bridge.events(self._events_seq)
+        except BridgeError:
+            return
+        if not reply.get("ok"):
+            return
+        new = reply.get("events") or []
+        if not new:
+            return
+        self.events.extend(new)
+        self._events_seq = new[-1]["seq"]
+        if len(self.events) > self.settings.max_cached_events:
+            self.events = self.events[-self.settings.max_cached_events :]
 
     async def control_once(self) -> None:
         wheels = self.control.tick()
@@ -167,6 +182,8 @@ class Hub:
                         "max_accel": self.settings.max_accel,
                     },
                 }
+            elif client.page == "errors":
+                msg["errors"] = views.errors_view(self.state, self.events)
         return msg
 
     # --- one browser ----------------------------------------------------------------------------
@@ -279,6 +296,25 @@ class Hub:
                 )
                 return self._ack(
                     msg, ok, "" if ok else "you do not hold manual control"
+                )
+            if kind == "set_debug":
+                if msg.get("level") is None:
+                    return self._ack(msg, False, "level is required")
+                return self._bridge_ack(
+                    msg,
+                    await self.bridge.set_debug(
+                        int(msg.get("node_id", 0)),
+                        int(msg["level"]),
+                        int(msg.get("category_mask", 0x0F)),
+                        int(msg.get("auto_off_min", 0)),
+                    ),
+                )
+            if kind == "save_flight_recording":
+                return self._bridge_ack(
+                    msg,
+                    await self.bridge.save_flight_recording(
+                        str(msg.get("reason", "manual"))
+                    ),
                 )
         except BridgeError as exc:
             return self._ack(msg, False, str(exc))

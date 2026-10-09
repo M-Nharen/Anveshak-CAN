@@ -35,9 +35,15 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3}}"
 - Subscribes: `/cmd/drive` (`DriveTargets`, six wheel targets), `/cmd_vel` (`Twist`, skid-steer with
   `wheel_radius`, `track_width`, `left_drives`, `right_drives`). The newest command from either wins; the node
   re-sends it at 50 Hz and stops the wheels after `cmd_timeout_s` without a new one.
-- Publishes: `/can/drive/feedback`, `/can/nodes`, `/can/bus`, `/can/events`, `/diagnostics`.
+- Publishes: `/can/drive/feedback`, `/can/nodes`, `/can/bus`, `/can/events`, `/can/errors`, `/diagnostics`.
 - Services: `/can/arm`, `/can/disarm`, `/can/estop` (`release: true` sends ESTOP_RELEASE),
-  `/can/request_lead`. Stubs that answer `success: false`: `/can/param_get`, `/can/param_set`, `/can/set_debug`.
-- Parameters: see `config/orin.yaml` and `config/rpi.yaml`. `debug_level` is stored only.
+  `/can/request_lead`, `/can/set_debug` (node, level 0-3, category mask, auto-off minutes).
+  Stubs that still answer `success: false`: `/can/param_get`, `/can/param_set` (parameter read/write
+  over SERVICE is separate work).
+- Parameters: see `config/orin.yaml` and `config/rpi.yaml`. `debug_level` applies to the whole
+  rover at runtime (`ros2 param set /can_gateway debug_level 2`); `flight_recorder`,
+  `flight_recorder_dir` and `event_log_dir` control the flight recorder and the JSONL event log;
+  `link_enabled`/`link_listen_port`/`link_peer_host`/`link_peer_port` configure the UDP link to
+  the other host (docs/architecture.md "The gateway link").
 
 Distro differences live in `anveshak_can_ros/cmake/anv_ros_compat.cmake` (a check on `ROS_DISTRO`).

@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "anv_gateway/debug_levels.hpp"
 #include "anv_gateway/messages.hpp"
 #include "anv_gateway/socketcan_bus.hpp"
 #include "anv_gateway/status.hpp"
@@ -63,6 +64,7 @@ GatewayNode::GatewayNode() : rclcpp::Node("can_gateway") {
   pub_nodes_ = create_publisher<msgs::msg::NodeRegistry>("/can/nodes", rclcpp::QoS(10));
   pub_bus_ = create_publisher<msgs::msg::BusStatus>("/can/bus", rclcpp::QoS(10));
   pub_events_ = create_publisher<msgs::msg::CanEvent>("/can/events", rclcpp::QoS(50));
+  pub_errors_ = create_publisher<msgs::msg::CanErrorEvent>("/can/errors", rclcpp::QoS(50));
   pub_diag_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
 
   // Services are named can/... (so /can/arm with no namespace).
@@ -98,10 +100,11 @@ GatewayNode::GatewayNode() : rclcpp::Node("can_gateway") {
         res->message = "not implemented yet";
       });
   srv_debug_ = create_service<msgs::srv::SetDebug>(
-      "can/set_debug", [](Req<msgs::srv::SetDebug>, Res<msgs::srv::SetDebug> res) {
-        res->success = false;
-        res->message = "not implemented yet";
+      "can/set_debug", [this](Req<msgs::srv::SetDebug> req, Res<msgs::srv::SetDebug> res) {
+        answer(gateway_->set_debug_level(req->node_id, req->level, req->category_mask, req->auto_off_min),
+               "set_debug", &res->success, &res->message);
       });
+  param_cb_ = add_on_set_parameters_callback(std::bind(&GatewayNode::on_set_parameters, this, std::placeholders::_1));
 
   // 50 Hz refresh: the gateway holds a target for 100 ms, so the node re-sends the latest one
   // until it is older than cmd_timeout_s.
@@ -121,6 +124,7 @@ void GatewayNode::shutdown() {
     event_sub_ = 0;
     gateway_->stop();
   }
+  if (link_) link_->stop();
   if (sim_) sim_->stop();
 }
 
@@ -143,8 +147,22 @@ void GatewayNode::declare_parameters() {
   declare_parameter<double>("cmd_timeout_s", 0.5);
   declare_parameter<double>("status_rate_hz", 10.0);
 
-  // Stored only: the debug-level mechanism is not built yet.
+  // Debug levels (docs: "Debug levels: switching debugging on and off"). Changing this parameter
+  // at runtime (ros2 param set /can_gateway debug_level N) applies it to the whole rover, exactly
+  // like the dashboard's rover-wide control; /can/set_debug is the per-node equivalent.
   declare_parameter<int>("debug_level", 0);
+
+  // Flight recorder and event log (docs: "Flight recorder" / "Gateway event log").
+  declare_parameter<bool>("flight_recorder", true);
+  declare_parameter<std::string>("flight_recorder_dir", "");
+  declare_parameter<std::string>("event_log_dir", "");
+
+  // The gateway link to the other host (docs: "The gateway link"). Off by default: a single-host
+  // bench or CI setup needs neither port.
+  declare_parameter<bool>("link_enabled", false);
+  declare_parameter<int>("link_listen_port", 0);
+  declare_parameter<std::string>("link_peer_host", "");
+  declare_parameter<int>("link_peer_port", 0);
 }
 
 bool GatewayNode::setup_gateway() {
@@ -180,6 +198,9 @@ bool GatewayNode::setup_gateway() {
   cfg.auto_takeover = get_parameter("auto_takeover").as_bool();
   cfg.rt_priority = static_cast<int>(get_parameter("rt_priority").as_int());
   cfg.cpu_affinity = static_cast<int>(get_parameter("cpu_affinity").as_int());
+  cfg.flight_recorder = get_parameter("flight_recorder").as_bool();
+  cfg.flight_recorder_dir = get_parameter("flight_recorder_dir").as_string();
+  cfg.event_log_dir = get_parameter("event_log_dir").as_string();
 
   std::unique_ptr<anv::gw::ICanBus> bus;
   if (bus_kind_ == "fake") {
@@ -200,14 +221,52 @@ bool GatewayNode::setup_gateway() {
   gateway_ = std::make_unique<anv::gw::Gateway>(cfg, std::move(bus));
   gateway_->set_logger([this](const std::string& m) { RCLCPP_INFO(get_logger(), "%s", m.c_str()); });
   event_sub_ = gateway_->subscribe([this](const anv::gw::GatewayEvent& e) { on_event(e); });
+
+  if (get_parameter("link_enabled").as_bool()) {
+    anv::gw::GatewayLinkConfig link_cfg;
+    link_cfg.listen_port = static_cast<uint16_t>(get_parameter("link_listen_port").as_int());
+    link_cfg.peer_host = get_parameter("link_peer_host").as_string();
+    link_cfg.peer_port = static_cast<uint16_t>(get_parameter("link_peer_port").as_int());
+    link_ = std::make_unique<anv::gw::GatewayLink>(link_cfg);
+    if (!link_->start(&err)) {
+      RCLCPP_FATAL(get_logger(), "gateway link failed to start: %s", err.c_str());
+      return false;
+    }
+    gateway_->attach_link(link_.get());
+  }
+
+  const int debug_level = static_cast<int>(get_parameter("debug_level").as_int());
+
   if (sim_) sim_->start();
   if (!gateway_->start()) {
     RCLCPP_FATAL(get_logger(), "gateway failed to start");
     return false;
   }
+  if (debug_level != 0) gateway_->set_debug_level(0, static_cast<uint8_t>(debug_level));
   RCLCPP_INFO(get_logger(), "gateway started: host %d on %s", cfg.host_id,
               bus_kind_ == "fake" ? "simulated bus" : cfg.interface_name.c_str());
   return true;
+}
+
+rcl_interfaces::msg::SetParametersResult GatewayNode::on_set_parameters(
+    const std::vector<rclcpp::Parameter>& params) {
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  for (const auto& p : params) {
+    if (p.get_name() != "debug_level") continue;
+    const int64_t level = p.as_int();
+    if (level < 0 || level > 3) {
+      result.successful = false;
+      result.reason = "debug_level must be 0-3";
+      continue;
+    }
+    const anv::gw::CmdResult r = gateway_->set_debug_level(0, static_cast<uint8_t>(level));
+    if (r != anv::gw::CmdResult::Ok) {
+      result.successful = false;
+      result.reason = anv::gw::cmd_result_name(r);
+    }
+  }
+  return result;
 }
 
 void GatewayNode::store_targets(const std::array<anv::gw::WheelTarget, anv::gw::kNumDrives>& t) {
@@ -261,9 +320,26 @@ void GatewayNode::on_event(const anv::gw::GatewayEvent& e) {
   m.node_id = e.node_id;
   m.term = e.term;
   m.role = e.role;
+
   std::lock_guard<std::mutex> lock(mu_);
   events_.push_back(m);
   if (events_.size() > 200) events_.pop_front();
+
+  // /can/errors (docs: "Error reporting and diagnostics"): NODE_EVENTs, the gateway's own
+  // numbered codes, and anything else worth a line on the Errors page's event list -- everything
+  // but a plain role change, which /can/bus already carries.
+  if (e.type != anv::gw::EventType::RoleChanged) {
+    msgs::msg::CanErrorEvent em;
+    em.stamp = m.stamp;
+    em.type = m.name;
+    em.node_id = e.node_id;
+    em.code = e.code;
+    em.severity = e.severity;
+    em.detail = e.detail;
+    em.cleared = e.cleared;
+    error_events_.push_back(em);
+    if (error_events_.size() > 500) error_events_.pop_front();
+  }
 }
 
 void GatewayNode::on_status_timer() {
@@ -400,11 +476,14 @@ void GatewayNode::on_status_timer() {
   pub_diag_->publish(diag);
 
   std::deque<msgs::msg::CanEvent> events;
+  std::deque<msgs::msg::CanErrorEvent> error_events;
   {
     std::lock_guard<std::mutex> lock(mu_);
     events.swap(events_);
+    error_events.swap(error_events_);
   }
   for (const auto& e : events) pub_events_->publish(e);
+  for (const auto& e : error_events) pub_errors_->publish(e);
 }
 
 void GatewayNode::answer(const CmdResult r, const std::string& what, bool* success, std::string* message) {

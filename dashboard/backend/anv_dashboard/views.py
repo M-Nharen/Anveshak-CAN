@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from .errors_registry import explain
 from .settings import Settings
 
 ROLE_MASTER = 2
+BUS_ERROR_CAUSES = {
+    "ack": "The sender is alone on the bus, every other node is at a different bitrate, or a "
+    "transceiver is in standby",
+    "stuff": "Bitrate or sample-point mismatch, missing termination, reflections from long branches",
+    "form": "Bitrate or sample-point mismatch, missing termination, reflections from long branches",
+    "bit": "Two senders on the same ID, a faulty transceiver, or a short on the bus",
+    "other": "Noise or reflections; check termination (should read 60 ohm) and grounding",
+}
 NODE_STATES = {
     0: "BOOT",
     1: "DISARMED",
@@ -93,6 +102,7 @@ def header_view(st: dict[str, Any] | None, control: dict[str, Any]) -> dict[str,
         prompt = "Leader lost — choose one"
     elif master == 0:
         prompt = "No leader — choose one"
+    debug = st.get("debug", {})
     return {
         "gateway": True,
         "host_id": st["host_id"],
@@ -107,6 +117,11 @@ def header_view(st: dict[str, Any] | None, control: dict[str, Any]) -> dict[str,
         "armed": st["armed"],
         "estop": st["estop_latched"],
         "control": control,
+        # docs: "a coloured 'DEBUG ON' banner shows on every page with the remaining auto-off time"
+        "debug_on": debug.get("on", False),
+        "debug_level": debug.get("level", 0),
+        "debug_auto_off_s": debug.get("auto_off_s", 0),
+        "link": st.get("link", {"configured": False, "up": False}),
     }
 
 
@@ -164,9 +179,56 @@ def nodes_view(st: dict[str, Any]) -> list[dict[str, Any]]:
                 "faults": fault_names(flags),
                 "health": health,
                 "reasons": reasons,
+                "debug_level": n.get("debug_level", 0),
             }
         )
     return rows
+
+
+def errors_view(st: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
+    """The Errors page (docs: "Errors page on the dashboard"). Black boxes, crash records and
+    incident report bundles are not built yet (B4 "Done when" covers the event stream and the
+    bus-error/debug-level pieces); this view is ready for them to be added alongside the rest.
+    """
+    enriched: list[dict[str, Any]] = []
+    active: dict[tuple[int, int], dict[str, Any]] = {}
+    counts: dict[int, dict[int, int]] = {}
+    for e in events:
+        info = explain(e["code"]) if e.get("code") else None
+        row = {
+            **e,
+            "name": info["name"] if info else e["type"],
+            "description": info["description"] if info else "",
+            "likely_cause": info["likely_cause"] if info else "",
+        }
+        enriched.append(row)
+        if e.get("code"):
+            key = (e["node_id"], e["code"])
+            if e.get("cleared"):
+                active.pop(key, None)
+            elif e.get("severity", 0) >= 1:  # warning or worse, still open
+                active[key] = row
+            category = (e["code"] >> 8) & 0xFF
+            node_counts = counts.setdefault(e["node_id"], {})
+            node_counts[category] = node_counts.get(category, 0) + 1
+
+    error_types = st["bus"].get("error_types", {})
+    bus_errors = [
+        {"type": t, "count": error_types.get(t, 0), "likely_cause": BUS_ERROR_CAUSES.get(t, "")}
+        for t in ("ack", "stuff", "form", "bit", "other")
+    ]
+
+    return {
+        "active": sorted(
+            active.values(), key=lambda r: (-r.get("severity", 0), -r["time_ns"])
+        ),
+        "events": list(reversed(enriched[-300:])),  # most recent first
+        "counts": counts,
+        "bus_errors": bus_errors,
+        "debug": st.get("debug", {}),
+        "flight_recorder_enabled": st.get("flight_recorder_enabled", False),
+        "link": st.get("link", {}),
+    }
 
 
 def drive_view(st: dict[str, Any], targets: list[float]) -> list[dict[str, Any]]:

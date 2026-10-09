@@ -1,7 +1,15 @@
 // End-to-end gateway behaviour on the in-process fake bus: real threads, real 20 ms cycle.
 // Timing bounds are deliberately loose upper limits so a busy CI machine does not flake; the
 // lower bounds (what must NOT happen early) are exact.
+#include <dirent.h>
+#include <unistd.h>
+
+#include <cmath>
+#include <cstdlib>
+
+#include "anv_gateway/gateway_link.hpp"
 #include "anv_gateway/status.hpp"
+#include "rover.h"
 #include "test_util.hpp"
 
 using namespace anv::gw;
@@ -28,13 +36,22 @@ struct Host {
   std::vector<GatewayEvent> events;
   std::mutex mu;
 
-  Host(FakeBusHub& hub, uint8_t id, bool auto_takeover = false)
-      : gw(std::make_unique<Gateway>(host_config(id, auto_takeover), hub.connect())) {
+  Host(FakeBusHub& hub, uint8_t id, bool auto_takeover = false, GatewayLink* link = nullptr,
+       const std::function<void(GatewayConfig&)>& configure = nullptr)
+      : gw(make_gateway(hub, id, auto_takeover, configure)) {
     gw->subscribe([this](const GatewayEvent& e) {
       std::lock_guard<std::mutex> lk(mu);
       events.push_back(e);
     });
+    if (link) gw->attach_link(link);
     gw->start();
+  }
+
+  static std::unique_ptr<Gateway> make_gateway(FakeBusHub& hub, uint8_t id, bool auto_takeover,
+                                                const std::function<void(GatewayConfig&)>& configure) {
+    GatewayConfig cfg = host_config(id, auto_takeover);
+    if (configure) configure(cfg);
+    return std::make_unique<Gateway>(cfg, hub.connect());
   }
   // Stop the threads before the members the event callback touches are destroyed.
   ~Host() { gw->stop(); }
@@ -431,6 +448,146 @@ TEST(status_text_lists_every_node_and_the_role) {
   CHECK(s.find("alive") != std::string::npos);
   CHECK(s.find("never seen") != std::string::npos);  // the other six
   CHECK(s.find("FPGA") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------------------------
+// B4: the gateway link, debug levels, the event stream and the flight recorder
+// ---------------------------------------------------------------------------------------------
+
+TEST(a_standby_hosts_local_targets_reach_the_leader_over_the_gateway_link) {
+  FakeBusHub hub;
+  Recorder rec(hub);
+
+  GatewayLink orin_link({23601, "127.0.0.1", 23602});
+  GatewayLink rpi_link({23602, "127.0.0.1", 23601});
+  std::string err;
+  CHECK(orin_link.start(&err));
+  CHECK(rpi_link.start(&err));
+
+  Host orin(hub, 1, false, &orin_link), rpi(hub, 2, false, &rpi_link);
+  sleep_ms(100);
+  CHECK(orin.gw->request_lead(1) == CmdResult::Ok);
+  CHECK(wait_until([&] { return orin.role() == Role::Master; }, 400));
+
+  // The RPi is standby and never asked to lead, but its local dashboard/autonomy can still set
+  // targets; they must reach the Orin over the link and come out as DRIVE_CMD on the bus.
+  WheelTarget t;
+  t.mode = DriveMode::Velocity;
+  t.a = 1.23;
+  t.b = -1.23;
+  std::array<WheelTarget, kNumDrives> all;
+  all.fill(t);
+  rpi.gw->set_targets(all);
+
+  CHECK(wait_until(
+      [&] {
+        for (auto& [ts, c] : rec.of<DriveCmdMsg>())
+          if (c.sender_host == 1 && std::abs(speed_rad_s(c.target_a) - 1.23) < 0.02) return true;
+        return false;
+      },
+      1000));
+
+  orin_link.stop();
+  rpi_link.stop();
+}
+
+TEST(a_quiet_gateway_link_is_reported_lost_after_1_s) {
+  FakeBusHub hub;
+  auto orin_link = std::make_unique<GatewayLink>(GatewayLinkConfig{23611, "127.0.0.1", 23612});
+  GatewayLink rpi_link({23612, "127.0.0.1", 23611});
+  std::string err;
+  CHECK(orin_link->start(&err));
+  CHECK(rpi_link.start(&err));
+
+  Host orin(hub, 1, false, orin_link.get()), rpi(hub, 2, false, &rpi_link);
+  CHECK(wait_until([&] { return rpi_link.peer_up(mono_ns()); }, 500));
+
+  orin_link->stop();  // the Orin's link goes quiet; its gateway keeps running
+  CHECK(wait_until([&] { return rpi.saw(EventType::GatewayLinkLost); }, 2000));
+
+  rpi_link.stop();
+}
+
+TEST(a_master_only_gateway_set_debug_level_puts_debug_level_on_the_bus) {
+  FakeBusHub hub;
+  Recorder rec(hub);
+  Host orin(hub, 1);
+  CHECK(orin.gw->request_lead(1) == CmdResult::Ok);
+  CHECK(wait_until([&] { return orin.role() == Role::Master; }, 400));
+
+  CHECK(orin.gw->set_debug_level(0, 1) == CmdResult::Ok);
+  CHECK(wait_until([&] { return rec.count_id(0x004) >= 1; }, 400));
+  CHECK(orin.gw->set_debug_level(99, 1) == CmdResult::BadArgument);  // node id out of range
+  CHECK(orin.gw->set_debug_level(0, 9) == CmdResult::BadArgument);   // level out of range
+}
+
+TEST(a_node_event_sequence_gap_triggers_a_log_read_request) {
+  FakeBusHub hub;
+  Recorder rec(hub);
+  Host orin(hub, 1);
+  auto port = hub.connect();
+
+  NodeEventMsg e1;
+  e1.node_id = drive_node_id(2);  // node 5
+  e1.severity = 1;
+  e1.error_code = 0x0304;
+  e1.event_seq = 10;
+  port->send(make_node_event(e1));
+  sleep_ms(50);
+  CHECK(rec.raw_with_id(ROVER_DRIVE2_SERVICE_REQ_ORIN_FRAME_ID).empty());  // no gap yet
+
+  NodeEventMsg e2 = e1;
+  e2.event_seq = 13;  // skipped 11 and 12
+  port->send(make_node_event(e2));
+
+  CHECK(wait_until([&] { return orin.saw(EventType::EventGapDetected, 5); }, 500));
+  CHECK(wait_until([&] { return !rec.raw_with_id(ROVER_DRIVE2_SERVICE_REQ_ORIN_FRAME_ID).empty(); }, 500));
+  const auto reqs = rec.raw_with_id(ROVER_DRIVE2_SERVICE_REQ_ORIN_FRAME_ID);
+  CHECK(!reqs.empty());
+  CHECK_EQ(reqs.back().data[0], kServiceOpLogRead);  // opcode 6, byte 0 of the request
+}
+
+TEST(a_critical_node_event_saves_a_flight_recording) {
+  char dir[] = "/tmp/anv_flight_gw_test_XXXXXX";
+  CHECK(::mkdtemp(dir) != nullptr);
+
+  FakeBusHub hub;
+  Host orin(hub, 1, false, nullptr, [&](GatewayConfig& cfg) {
+    cfg.flight_recorder = true;
+    cfg.flight_recorder_dir = dir;
+  });
+  auto port = hub.connect();
+
+  NodeEventMsg crit;
+  crit.node_id = drive_node_id(1);
+  crit.severity = 3;  // critical
+  crit.error_code = 0x0602;  // HARD_FAULT
+  crit.event_seq = 1;
+  port->send(make_node_event(crit));
+
+  CHECK(wait_until([&] { return orin.saw(EventType::FlightRecorderSaved); }, 500));
+
+  DIR* d = ::opendir(dir);
+  CHECK(d != nullptr);
+  bool found = false;
+  if (d) {
+    for (dirent* ent = ::readdir(d); ent != nullptr; ent = ::readdir(d)) {
+      const std::string name = ent->d_name;
+      if (name.find("flight_") == 0) found = true;
+    }
+    ::closedir(d);
+  }
+  CHECK(found);
+
+  // Clean up: remove every file we created, then the directory.
+  if ((d = ::opendir(dir))) {
+    for (dirent* ent = ::readdir(d); ent != nullptr; ent = ::readdir(d)) {
+      const std::string name = ent->d_name;
+      if (name != "." && name != "..") std::remove((std::string(dir) + "/" + name).c_str());
+    }
+    ::closedir(d);
+  }
+  ::rmdir(dir);
 }
 
 int main() { return t::run_all(); }

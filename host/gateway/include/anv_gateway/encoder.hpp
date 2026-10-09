@@ -17,10 +17,16 @@ CanFrame make_host_hb(const HostHbMsg& hb);
 CanFrame make_lead_request(const LeadRequestMsg& req);
 // msg.drive in 1-6; other values return an empty frame (id 0xFFFF).
 CanFrame make_drive_cmd(const DriveCmdMsg& cmd);
+// Master only. target_node 0 = all nodes.
+CanFrame make_debug_level(const DebugLevelMsg& msg);
+// msg.node_id must be a drive node (4-9); msg.host in 1-3; msg.is_response must be false.
+// Any other combination (e.g. the FPGA, which has no SERVICE_REQ messages) returns an empty frame.
+CanFrame make_service_req(const ServiceMsg& msg);
 
 // Packers for node-side frames, used by tests and by anything that simulates a node in C++.
 CanFrame make_node_hb(const NodeHbMsg& hb);  // node_id 4-9 (drive) or 20 (FPGA)
 CanFrame make_drive_fb_a(const DriveFbAMsg& fb);
+CanFrame make_node_event(const NodeEventMsg& e);  // node_id 4-9 (drive) or 20 (FPGA)
 
 constexpr uint16_t kInvalidFrameId = 0xFFFF;
 

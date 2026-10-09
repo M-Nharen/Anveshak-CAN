@@ -18,7 +18,21 @@
   function estop() {
     command({ t: 'estop' }, 'E-stop');
   }
+
+  const fmtS = (s) => {
+    if (!s || s <= 0) return '';
+    const m = Math.floor(s / 60);
+    const ss = Math.round(s % 60);
+    return m > 0 ? `${m}m ${ss}s` : `${ss}s`;
+  };
 </script>
+
+{#if h?.debug_on}
+  <div class="pill yellow debug-banner">
+    DEBUG ON — level {h.debug_level}
+    {#if h.debug_auto_off_s > 0}<span class="muted">· auto-off in {fmtS(h.debug_auto_off_s)}</span>{/if}
+  </div>
+{/if}
 
 <header class="card">
   <div class="row top">
@@ -69,4 +83,5 @@
   .top { justify-content: space-between; }
   .who { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .spacer { flex: 1; }
+  .debug-banner { position: sticky; top: 0; z-index: 11; width: 100%; text-align: center; margin-bottom: 8px; padding: 6px; border-radius: 0; font-weight: 700; letter-spacing: 0.03em; }
 </style>

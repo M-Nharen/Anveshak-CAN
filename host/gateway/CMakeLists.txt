@@ -31,7 +31,11 @@ set(ANV_GATEWAY_SOURCES
   src/status.cpp
   src/gateway.cpp
   src/events.cpp
-  src/bridge.cpp)
+  src/bridge.cpp
+  src/debug_levels.cpp
+  src/flight_recorder.cpp
+  src/bus_errors.cpp
+  src/gateway_link.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND ANV_GATEWAY_SOURCES src/socketcan_bus.cpp)
 endif()

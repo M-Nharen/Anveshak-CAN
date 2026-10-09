@@ -20,4 +20,13 @@ can_gateway:
     cmd_timeout_s: 0.5      # stop the wheels when no command arrived for this long
     status_rate_hz: 10.0
 
-    debug_level: 0          # stored only for now
+    debug_level: 0          # whole-rover default; also settable at runtime with "ros2 param set"
+    flight_recorder: true
+    flight_recorder_dir: ""   # e.g. /var/log/anveshak/flight; empty = memory only, no auto-save
+    event_log_dir: ""         # e.g. /var/log/anveshak/events; empty = no JSONL log file
+
+    # The gateway link to the Orin (see orin.yaml's link_peer_host for the other side).
+    link_enabled: false
+    link_listen_port: 7400
+    link_peer_host: ""        # the Orin's address on the host-to-host network
+    link_peer_port: 7400

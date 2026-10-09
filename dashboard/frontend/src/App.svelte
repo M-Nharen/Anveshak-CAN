@@ -5,12 +5,14 @@
   import Overview from './lib/Overview.svelte';
   import Nodes from './lib/Nodes.svelte';
   import Drive from './lib/Drive.svelte';
+  import Errors from './lib/Errors.svelte';
   import Login from './lib/Login.svelte';
 
   const tabs = [
     ['overview', 'Overview'],
     ['nodes', 'Nodes'],
     ['drive', 'Drive'],
+    ['errors', 'Errors'],
   ];
 
   let page = tabs.some(([id]) => `#${id}` === location.hash) ? location.hash.slice(1) : 'overview';
@@ -44,7 +46,7 @@
     {#if page === 'overview'}
       <Overview data={ready ? $snapshot.overview : null} />
     {:else if page === 'nodes'}
-      <Nodes rows={ready ? $snapshot.nodes : null} />
+      <Nodes rows={ready ? $snapshot.nodes : null} authed={$snapshot?.authed === true} on:login={() => (showLogin = true)} />
     {:else if page === 'drive'}
       <Drive
         data={ready ? $snapshot.drive : null}
@@ -52,6 +54,8 @@
         authed={$snapshot?.authed === true}
         connected={$connected}
       />
+    {:else if page === 'errors'}
+      <Errors data={ready ? $snapshot.errors : null} authed={$snapshot?.authed === true} on:login={() => (showLogin = true)} />
     {/if}
   </section>
 </main>

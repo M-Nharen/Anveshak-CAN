@@ -4,6 +4,7 @@
 #include <type_traits>
 
 #include "anv_gateway/protocol.hpp"
+#include "errors.h"
 #include "ids.h"
 
 namespace anv::gw {
@@ -62,6 +63,7 @@ double NodeRegistry::expected_hz(uint16_t id, uint8_t debug_level) {
 
 void NodeRegistry::touch(uint8_t node_id, int64_t rx_ns, std::vector<GatewayEvent>& events) {
   NodeInfo& n = entry(node_id);
+  const bool was_seen = n.seen;
   n.last_seen_ns = rx_ns;
   n.seen = true;
   if (!n.alive) {
@@ -70,6 +72,11 @@ void NodeRegistry::touch(uint8_t node_id, int64_t rx_ns, std::vector<GatewayEven
     e.type = EventType::NodeAlive;
     e.time_ns = rx_ns;
     e.node_id = node_id;
+    // First-ever contact has no error code; coming back after being missing does (NODE_RETURNED).
+    if (was_seen) {
+      e.code = ROVER_ERR_NODE_RETURNED;
+      e.severity = static_cast<uint8_t>(ROVER_SEVERITY_INFO);
+    }
     events.push_back(e);
   }
 }
@@ -102,6 +109,8 @@ void NodeRegistry::on_decoded(const Decoded& d, std::vector<GatewayEvent>& event
             e.type = EventType::NodeRebooted;
             e.time_ns = d.rx_ns;
             e.node_id = node_id;
+            e.code = ROVER_ERR_NODE_REBOOTED;
+            e.severity = static_cast<uint8_t>(ROVER_SEVERITY_WARNING);
             events.push_back(e);
           }
           n.has_hb = true;
@@ -153,6 +162,8 @@ void NodeRegistry::tick(int64_t now_ns, std::vector<GatewayEvent>& events) {
       e.type = EventType::NodeMissing;
       e.time_ns = now_ns;
       e.node_id = id;
+      e.code = ROVER_ERR_NODE_MISSING;
+      e.severity = static_cast<uint8_t>(ROVER_SEVERITY_ERROR);
       events.push_back(e);
     }
   }

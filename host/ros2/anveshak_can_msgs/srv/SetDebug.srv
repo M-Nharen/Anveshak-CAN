@@ -1,7 +1,8 @@
-# Stub: answered with success = false until debug levels land.
+# /can/set_debug: one node's debug level, or the whole rover's (node_id = 0).
 uint8 node_id      # 0 = all nodes
 uint8 level        # 0-3
 uint8 category_mask
+uint16 auto_off_min  # minutes until auto-revert to level 0; 0 = until changed
 ---
 bool success
 string message

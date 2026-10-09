@@ -1,8 +1,23 @@
 <script>
-  export let rows; // snapshot.nodes
+  import { createEventDispatcher } from 'svelte';
+  import { command } from './socket.js';
 
+  export let rows; // snapshot.nodes
+  export let authed = false;
+
+  const dispatch = createEventDispatcher();
   const fmt = (v, unit = '') => (v === null || v === undefined ? '—' : `${v}${unit}`);
   const temps = (t) => Object.values(t ?? {}).length ? Object.entries(t).map(([k, v]) => `${k} ${v}°`).join(' · ') : '—';
+
+  let edits = {}; // node_id -> chosen level, until applied
+
+  function apply(node) {
+    if (!authed) return dispatch('login');
+    const level = edits[node.node_id] ?? node.debug_level;
+    command({ t: 'set_debug', node_id: node.node_id, level: Number(level) }, `Debug level (${node.name})`);
+    delete edits[node.node_id];
+    edits = edits;
+  }
 </script>
 
 {#if rows}
@@ -11,7 +26,7 @@
       <thead>
         <tr>
           <th>Node</th><th>Health</th><th>State</th><th>Heartbeat</th><th>Firmware</th><th>Uptime</th>
-          <th>TEC/REC</th><th>Temperatures</th><th>Faults</th>
+          <th>TEC/REC</th><th>Temperatures</th><th>Faults</th><th>Debug level</th>
         </tr>
       </thead>
       <tbody>
@@ -26,6 +41,20 @@
             <td>{n.tec}/{n.rec}</td>
             <td>{temps(n.temps)}</td>
             <td>{n.faults.length ? n.faults.join(', ') : '—'}</td>
+            <td>
+              <div class="row debug-cell">
+                <select
+                  value={edits[n.node_id] ?? n.debug_level}
+                  on:change={(e) => (edits[n.node_id] = Number(e.currentTarget.value))}
+                >
+                  <option value={0}>0 off</option>
+                  <option value={1}>1 normal</option>
+                  <option value={2}>2 debug</option>
+                  <option value={3}>3 trace</option>
+                </select>
+                <button on:click={() => apply(n)}>Set</button>
+              </div>
+            </td>
           </tr>
         {/each}
       </tbody>
@@ -34,3 +63,9 @@
 {:else}
   <p class="muted">Waiting for the gateway…</p>
 {/if}
+
+<style>
+  .debug-cell { gap: 6px; }
+  .debug-cell select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  .debug-cell button { padding: 4px 10px; }
+</style>

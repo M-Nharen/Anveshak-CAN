@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/NodeRegistry.msg"
   "msg/BusStatus.msg"
   "msg/CanEvent.msg"
+  "msg/CanErrorEvent.msg"
   "srv/Arm.srv"
   "srv/Disarm.srv"
   "srv/Estop.srv"

@@ -46,6 +46,15 @@ std::string node_json(const NodeInfo& n, int64_t now_ns) {
   return o + "}";
 }
 
+std::string event_json(const EventRecord& r) {
+  const GatewayEvent& e = r.event;
+  return "{\"seq\":" + std::to_string(r.seq) + ",\"time_ns\":" + std::to_string(e.time_ns) + ",\"type\":" +
+         json::quote(event_type_name(e.type)) + ",\"node_id\":" + std::to_string(e.node_id) + ",\"term\":" +
+         std::to_string(e.term) + ",\"role\":" + std::to_string(e.role) + ",\"code\":" + std::to_string(e.code) +
+         ",\"severity\":" + std::to_string(e.severity) + ",\"detail\":" + std::to_string(e.detail) +
+         ",\"cleared\":" + b(e.cleared) + "}";
+}
+
 }  // namespace
 
 std::string state_to_json(const GatewayState& s) {
@@ -60,7 +69,16 @@ std::string state_to_json(const GatewayState& s) {
                   ",\"bus\":{\"rx_frames\":" + std::to_string(s.bus.rx_frames) + ",\"tx_frames\":" + std::to_string(s.bus.tx_frames) +
                   ",\"tx_failures\":" + std::to_string(s.bus.tx_failures) + ",\"error_frames\":" + std::to_string(s.bus.error_frames) +
                   ",\"undecoded_frames\":" + std::to_string(s.bus.undecoded_frames) + ",\"bus_off\":" + b(s.bus.bus_off) +
-                  ",\"rx_fps\":" + num(s.bus.rx_fps) + "},\"peers\":[";
+                  ",\"rx_fps\":" + num(s.bus.rx_fps) + ",\"error_types\":{\"other\":" +
+                  std::to_string(s.bus.error_types[static_cast<size_t>(BusErrorType::Other)]) + ",\"ack\":" +
+                  std::to_string(s.bus.error_types[static_cast<size_t>(BusErrorType::Ack)]) + ",\"stuff\":" +
+                  std::to_string(s.bus.error_types[static_cast<size_t>(BusErrorType::Stuff)]) + ",\"form\":" +
+                  std::to_string(s.bus.error_types[static_cast<size_t>(BusErrorType::Form)]) + ",\"bit\":" +
+                  std::to_string(s.bus.error_types[static_cast<size_t>(BusErrorType::Bit)]) +
+                  "}},\"debug\":{\"level\":" + std::to_string(s.debug_level) + ",\"on\":" + b(s.debug_on) +
+                  ",\"auto_off_s\":" + num(s.debug_auto_off_ns / 1e9) +
+                  "},\"flight_recorder_enabled\":" + b(s.flight_recorder_enabled) + ",\"link\":{\"configured\":" +
+                  b(s.link_configured) + ",\"up\":" + b(s.link_up) + "},\"peers\":[";
   for (size_t i = 1; i < s.peers.size(); ++i) {  // index = host node: 1 Orin, 2 RPi, 3 tool
     if (i > 1) o += ",";
     o += "{\"host\":" + std::to_string(i) + ",\"seen\":" + b(s.peers[i].seen) + ",\"role\":" + std::to_string(s.peers[i].role) +
@@ -197,6 +215,40 @@ std::string Bridge::handle(const std::string& line) {
     }
     gw_.set_targets(t);
     return "{\"id\":" + id + ",\"ok\":true,\"result\":\"Ok\"}";
+  }
+  if (cmd == "set_debug") {
+    auto number = [&](const char* k, double dflt) {
+      const json::Value* v = req.get(k);
+      return (v && v->type == json::Value::Number) ? v->num : dflt;
+    };
+    const double node = number("node_id", 0);
+    const double level = number("level", -1);
+    if (level < 0) return fail("level is required");
+    if (node < 0 || node > 31) return fail("node_id must be 0-31");
+    return result(gw_.set_debug_level(static_cast<uint8_t>(node), static_cast<uint8_t>(level),
+                                       static_cast<uint8_t>(number("category_mask", kDebugCategoryAll)),
+                                       static_cast<uint16_t>(number("auto_off_min", 0))));
+  }
+  if (cmd == "save_flight_recording") {
+    const json::Value* r = req.get("reason");
+    const std::string reason = (r && r->type == json::Value::String) ? r->str : "manual";
+    const std::string path = gw_.save_flight_recording(reason);
+    return "{\"id\":" + id + ",\"ok\":" + b(!path.empty()) + ",\"path\":" + json::quote(path) + "}";
+  }
+  if (cmd == "events") {
+    const json::Value* since_v = req.get("since");
+    const json::Value* max_v = req.get("max");
+    const uint64_t since = since_v && since_v->type == json::Value::Number
+                                ? static_cast<uint64_t>(since_v->num) : 0;
+    const size_t max = max_v && max_v->type == json::Value::Number ? static_cast<size_t>(max_v->num) : 500;
+    std::string out = "{\"id\":" + id + ",\"ok\":true,\"events\":[";
+    bool first = true;
+    for (const EventRecord& r : gw_.events_since(since, max)) {
+      if (!first) out += ",";
+      first = false;
+      out += event_json(r);
+    }
+    return out + "]}";
   }
   return fail("unknown cmd '" + cmd + "'");
 }

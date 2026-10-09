@@ -135,6 +135,58 @@ CanFrame make_drive_cmd(const DriveCmdMsg& cmd) {
 #undef ANV_DRIVE_CMD
 }
 
+CanFrame make_debug_level(const DebugLevelMsg& msg) {
+  CanFrame f;
+  struct rover_debug_level_t s;
+  rover_debug_level_init(&s);
+  s.target_node = msg.target_node;
+  s.level = msg.level;
+  s.category_mask = msg.category_mask;
+  s.auto_off_timer_min = msg.auto_off_timer_min;
+  s.master_node_id = msg.master_node_id;
+  s.master_term = msg.master_term;
+  ANV_PACK(f, ROVER_DEBUG_LEVEL_FRAME_ID, ROVER_DEBUG_LEVEL_LENGTH, rover_debug_level_pack, s);
+  return f;
+}
+
+CanFrame make_service_req(const ServiceMsg& msg) {
+  CanFrame f;
+  if (msg.is_response) return invalid_frame();
+#define ANV_SERVICE_REQ(N, HOST, NAME, ID, LEN)                                        \
+  do {                                                                                 \
+    struct rover_drive##N##_service_req_##NAME##_t s;                                 \
+    rover_drive##N##_service_req_##NAME##_init(&s);                                   \
+    s.opcode = msg.opcode;                                                            \
+    s.transaction_id = msg.transaction_id;                                            \
+    s.param_index = msg.param_index;                                                  \
+    s.value_raw = msg.value_raw;                                                      \
+    ANV_PACK(f, ID, LEN, rover_drive##N##_service_req_##NAME##_pack, s);              \
+    return f;                                                                         \
+  } while (0)
+#define ANV_SERVICE_REQ_DRIVE(N)                                                                      \
+  case 3 + N:                                                                                         \
+    switch (msg.host) {                                                                               \
+      case 1: ANV_SERVICE_REQ(N, ORIN, orin, ROVER_DRIVE##N##_SERVICE_REQ_ORIN_FRAME_ID,               \
+                               ROVER_DRIVE##N##_SERVICE_REQ_ORIN_LENGTH);                               \
+      case 2: ANV_SERVICE_REQ(N, RPI, rpi, ROVER_DRIVE##N##_SERVICE_REQ_RPI_FRAME_ID,                   \
+                               ROVER_DRIVE##N##_SERVICE_REQ_RPI_LENGTH);                                \
+      case 3: ANV_SERVICE_REQ(N, TOOL, tool, ROVER_DRIVE##N##_SERVICE_REQ_TOOL_FRAME_ID,                \
+                               ROVER_DRIVE##N##_SERVICE_REQ_TOOL_LENGTH);                                \
+      default: return invalid_frame();                                                                 \
+    }
+  switch (msg.node_id) {
+    ANV_SERVICE_REQ_DRIVE(1)
+    ANV_SERVICE_REQ_DRIVE(2)
+    ANV_SERVICE_REQ_DRIVE(3)
+    ANV_SERVICE_REQ_DRIVE(4)
+    ANV_SERVICE_REQ_DRIVE(5)
+    ANV_SERVICE_REQ_DRIVE(6)
+    default: return invalid_frame();  // no SERVICE_REQ messages for this node (e.g. the FPGA)
+  }
+#undef ANV_SERVICE_REQ_DRIVE
+#undef ANV_SERVICE_REQ
+}
+
 CanFrame make_node_hb(const NodeHbMsg& hb) {
   CanFrame f;
 #define ANV_NODE_HB(NAME, ID, LEN)                           \
@@ -191,6 +243,34 @@ CanFrame make_drive_fb_a(const DriveFbAMsg& fb) {
     default: return invalid_frame();
   }
 #undef ANV_FB_A
+}
+
+CanFrame make_node_event(const NodeEventMsg& e) {
+  CanFrame f;
+#define ANV_NODE_EVENT(NAME, ID, LEN)                   \
+  do {                                                  \
+    struct rover_##NAME##_node_event_t s;               \
+    rover_##NAME##_node_event_init(&s);                 \
+    s.severity = e.severity;                            \
+    s.cleared = e.cleared;                               \
+    s.error_code = e.error_code;                         \
+    s.event_seq = e.event_seq;                           \
+    s.detail = e.detail;                                 \
+    s.uptime_0_1_s = e.uptime_0_1_s;                      \
+    ANV_PACK(f, ID, LEN, rover_##NAME##_node_event_pack, s); \
+    return f;                                            \
+  } while (0)
+  switch (e.node_id) {
+    case 4: ANV_NODE_EVENT(drive1, ROVER_DRIVE1_NODE_EVENT_FRAME_ID, ROVER_DRIVE1_NODE_EVENT_LENGTH);
+    case 5: ANV_NODE_EVENT(drive2, ROVER_DRIVE2_NODE_EVENT_FRAME_ID, ROVER_DRIVE2_NODE_EVENT_LENGTH);
+    case 6: ANV_NODE_EVENT(drive3, ROVER_DRIVE3_NODE_EVENT_FRAME_ID, ROVER_DRIVE3_NODE_EVENT_LENGTH);
+    case 7: ANV_NODE_EVENT(drive4, ROVER_DRIVE4_NODE_EVENT_FRAME_ID, ROVER_DRIVE4_NODE_EVENT_LENGTH);
+    case 8: ANV_NODE_EVENT(drive5, ROVER_DRIVE5_NODE_EVENT_FRAME_ID, ROVER_DRIVE5_NODE_EVENT_LENGTH);
+    case 9: ANV_NODE_EVENT(drive6, ROVER_DRIVE6_NODE_EVENT_FRAME_ID, ROVER_DRIVE6_NODE_EVENT_LENGTH);
+    case 20: ANV_NODE_EVENT(fpga, ROVER_FPGA_NODE_EVENT_FRAME_ID, ROVER_FPGA_NODE_EVENT_LENGTH);
+    default: return invalid_frame();
+  }
+#undef ANV_NODE_EVENT
 }
 
 }  // namespace anv::gw

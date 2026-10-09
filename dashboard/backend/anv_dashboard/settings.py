@@ -41,6 +41,8 @@ class Settings:
         111.0  # standard 8-byte frame incl. stuffing, for the bus-load estimate
     )
 
+    max_cached_events: int = 1000  # events kept in memory for the Errors page
+
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
         e = os.environ if env is None else env
