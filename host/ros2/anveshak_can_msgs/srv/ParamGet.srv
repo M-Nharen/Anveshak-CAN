@@ -1,0 +1,7 @@
+# Stub: answered with success = false until the parameter service lands.
+uint8 node_id
+uint16 index
+---
+bool success
+string message
+uint32 value_raw

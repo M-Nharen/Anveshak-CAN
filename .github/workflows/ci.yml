@@ -151,8 +151,59 @@ jobs:
       - name: Run gateway tests
         run: ctest --test-dir build-gateway --output-on-failure
 
-  # ros2: the ROS 2 build and test jobs (anveshak_can_msgs, anveshak_can_ros on the ros:humble and
-  # ros:jazzy containers) are added by prompt B2, next to the gateway job above.
+  # The same sources must build and pass on both ROS 2 distributions (x86 containers).
+  ros2:
+    name: ROS 2 ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    container: ros:${{ matrix.distro }}
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [humble, jazzy]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build and test dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake python3-colcon-common-extensions python3-pytest \
+            ros-${{ matrix.distro }}-rosidl-default-generators \
+            ros-${{ matrix.distro }}-rosidl-default-runtime \
+            ros-${{ matrix.distro }}-geometry-msgs \
+            ros-${{ matrix.distro }}-diagnostic-msgs \
+            ros-${{ matrix.distro }}-launch-testing \
+            ros-${{ matrix.distro }}-launch-testing-ament-cmake \
+            ros-${{ matrix.distro }}-launch-testing-ros
+
+      - name: colcon build
+        run: |
+          . /opt/ros/${{ matrix.distro }}/setup.bash
+          colcon build --base-paths host/ros2 --event-handlers console_cohesion+ 2>&1 | tee build.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      - name: colcon test
+        run: |
+          . /opt/ros/${{ matrix.distro }}/setup.bash
+          . install/setup.bash
+          colcon test --base-paths host/ros2 --event-handlers console_direct+ --return-code-on-test-failure 2>&1 | tee test.log
+          test "${PIPESTATUS[0]}" -eq 0
+          colcon test-result --verbose
+        shell: bash
+
+      # CI logs are hard to fetch from some tools; the tail of a failure goes into an annotation.
+      - name: Summarise failure
+        if: failure()
+        run: |
+          for f in build.log test.log; do
+            [ -f "$f" ] && echo "::error title=ros2 ${{ matrix.distro }} $f::$(grep -iE 'error|fail|assert|Traceback|fatal|can_gateway_node-1' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          done
+          for f in log/latest_test/*/stdout_stderr.log; do
+            [ -f "$f" ] && echo "::error title=ros2 ${{ matrix.distro }} $f::$(grep -iE 'error|fail|assert|Traceback|fatal|can_gateway_node-1' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          done
+          exit 0
+        shell: bash
 
   # dashboard:
   #   name: Dashboard (backend + frontend)

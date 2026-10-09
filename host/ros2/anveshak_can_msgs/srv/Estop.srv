@@ -1,0 +1,5 @@
+# release = false: send E-stop (any host, any role). release = true: send ESTOP_RELEASE (master only).
+bool release
+---
+bool success
+string message
