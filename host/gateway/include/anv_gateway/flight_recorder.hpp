@@ -4,6 +4,7 @@
 // had debugging on for still leaves a trail.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
