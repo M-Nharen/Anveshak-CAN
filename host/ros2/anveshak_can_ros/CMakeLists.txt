@@ -22,7 +22,8 @@ add_subdirectory(core)
 
 add_executable(can_gateway_node src/main.cpp src/gateway_node.cpp)
 target_include_directories(can_gateway_node PRIVATE src)
-target_link_libraries(can_gateway_node PRIVATE anv_ros2_core)
+# Plain signature: ament_target_dependencies uses it, and CMake forbids mixing the two forms.
+target_link_libraries(can_gateway_node anv_ros2_core)
 target_compile_options(can_gateway_node PRIVATE -Wall -Wextra)
 anv_link_ros(can_gateway_node)
 
