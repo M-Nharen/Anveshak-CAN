@@ -35,7 +35,8 @@ anv_can_gateway --config host/gateway/config/gateway.example.yaml
 
 Config keys (flat `key: value` YAML, `#` comments): `interface`, `host_id` (1 Orin, 2 RPi),
 `tie_break`, `auto_takeover` (default `false`), `rt_priority` (SCHED_FIFO for the CAN threads,
-default 50, 0 = off), `cpu_affinity` (pin the CAN threads, default off). A failure to get real-time
+default 50, 0 = off), `cpu_affinity` (pin the CAN threads, default off), `bridge_socket`
+(Unix socket path for the dashboard backend, default off; also `--bridge-socket`). A failure to get real-time
 priority is logged, not fatal.
 
 It starts as standby and prints a status block every second. Commands on stdin:
@@ -95,3 +96,11 @@ the gateway's own threads: keep them short.
   "expected protocol version" to compare against yet) and the rolling frame log from the "Host
   software" table (B1's build list does not include it). Gateway link, debug levels, the error log
   and the flight recorder are B4; ROS 2 is B2; the dashboard is B3.
+
+## Dashboard bridge (`anv_gateway/bridge.hpp`)
+
+With `bridge_socket` set, the executable serves a Unix socket (mode 0660) carrying one JSON object
+per line, one reply line per request: `state`, `set_targets` (6 wheels), `arm`, `disarm`, `estop`,
+`release_estop`, `request_lead`, `ping`. It only wraps the public `Gateway` API, so master-only
+rules, the E-stop latch and the 100 ms target hold stay in the gateway. The dashboard backend
+(`dashboard/backend`) is its client; the format is documented at the top of `bridge.hpp`.

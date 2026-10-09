@@ -5,3 +5,4 @@ tie_break: 1        # lower wins if two hosts claim the lead in the same instant
 auto_takeover: false  # true: a standby claims the lead 250 ms after the master vanishes
 rt_priority: 50     # SCHED_FIFO priority for the CAN threads (needs root / CAP_SYS_NICE); 0 = off
 cpu_affinity: -1    # pin the CAN threads to this core (useful on the RPi); -1 = don't pin
+bridge_socket: ""   # e.g. /run/anveshak/gateway.sock to let the dashboard backend talk to this gateway

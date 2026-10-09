@@ -1,0 +1,2 @@
+# Makes import sorting identical whether ruff runs from the repo root or from here.
+src = [".", "tests"]

@@ -15,6 +15,7 @@ anv_add_test(test_config)
 anv_add_test(test_leadership)
 anv_add_test(test_registry)
 anv_add_test(test_gateway)
+anv_add_test(test_bridge)
 
 # End-to-end: the real executable against the Python simulator on vcan0. It skips itself (exit
 # code 77) wherever vcan, python-can or cantools is missing, e.g. in a container without CAN.

@@ -14,7 +14,8 @@ TEST(parses_all_keys_comments_and_quotes) {
       "\n"
       "auto_takeover: yes\n"
       "rt_priority: 40\n"
-      "cpu_affinity: 3\n";
+      "cpu_affinity: 3\n"
+      "bridge_socket: /tmp/gw.sock\n";
   CHECK(parse_config_text(text, c, &err));
   CHECK(c.interface_name == "vcan0");
   CHECK_EQ(c.host_id, 2);
@@ -22,6 +23,7 @@ TEST(parses_all_keys_comments_and_quotes) {
   CHECK(c.auto_takeover);
   CHECK_EQ(c.rt_priority, 40);
   CHECK_EQ(c.cpu_affinity, 3);
+  CHECK(c.bridge_socket == "/tmp/gw.sock");
 }
 
 TEST(defaults_are_safe) {

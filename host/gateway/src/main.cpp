@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 
+#include "anv_gateway/bridge.hpp"
 #include "anv_gateway/config.hpp"
 #include "anv_gateway/gateway.hpp"
 #include "anv_gateway/socketcan_bus.hpp"
@@ -28,8 +29,9 @@ void usage(const char* argv0) {
       "usage: %s [--config FILE] [--interface IFACE] [--status-interval SECONDS]\n"
       "\n"
       "  --config FILE            flat YAML: host_id, tie_break, auto_takeover, interface,\n"
-      "                           rt_priority, cpu_affinity (see config/gateway.example.yaml)\n"
+      "                           rt_priority, cpu_affinity, bridge_socket (see config/gateway.example.yaml)\n"
       "  --interface IFACE        CAN interface, overrides the config file (default can0)\n"
+      "  --bridge-socket PATH     serve the dashboard bridge on this Unix socket (JSON lines)\n"
       "  --status-interval SEC    print status every SEC seconds, 0 = never (default 1)\n"
       "\n"
       "commands on stdin:\n"
@@ -48,7 +50,7 @@ const char* describe(CmdResult r) { return cmd_result_name(r); }
 
 int main(int argc, char** argv) {
   GatewayConfig cfg;
-  std::string config_path, iface_override;
+  std::string config_path, iface_override, bridge_override;
   double status_interval = 1.0;
 
   for (int i = 1; i < argc; ++i) {
@@ -62,6 +64,7 @@ int main(int argc, char** argv) {
     };
     if (a == "--config") config_path = next("--config");
     else if (a == "--interface") iface_override = next("--interface");
+    else if (a == "--bridge-socket") bridge_override = next("--bridge-socket");
     else if (a == "--status-interval") status_interval = std::atof(next("--status-interval"));
     else if (a == "--help" || a == "-h") { usage(argv[0]); return 0; }
     else { std::fprintf(stderr, "unknown argument '%s'\n", a.c_str()); usage(argv[0]); return 2; }
@@ -73,6 +76,7 @@ int main(int argc, char** argv) {
     return 2;
   }
   if (!iface_override.empty()) cfg.interface_name = iface_override;
+  if (!bridge_override.empty()) cfg.bridge_socket = bridge_override;
 
   auto bus = SocketCanBus::open(cfg.interface_name, &err);
   if (!bus) {
@@ -96,6 +100,18 @@ int main(int argc, char** argv) {
   std::printf("anv_can_gateway: host %u on %s, standby until a lead request names this host\n", cfg.host_id,
               cfg.interface_name.c_str());
   std::fflush(stdout);
+
+  // The dashboard backend talks to the gateway through this socket (host/gateway/README.md).
+  Bridge bridge(gw, cfg.bridge_socket);
+  if (!cfg.bridge_socket.empty()) {
+    if (!bridge.start(&err)) {
+      std::fprintf(stderr, "bridge: %s\n", err.c_str());
+      gw.stop();
+      return 1;
+    }
+    std::printf("dashboard bridge on %s\n", cfg.bridge_socket.c_str());
+    std::fflush(stdout);
+  }
 
   bool stdin_open = true, driving = false;
   double drive_a = 0, drive_b = 0;
@@ -156,6 +172,7 @@ int main(int argc, char** argv) {
     }
   }
 
+  bridge.stop();
   gw.stop();
   return 0;
 }

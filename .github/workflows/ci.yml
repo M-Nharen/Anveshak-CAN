@@ -149,7 +149,18 @@ jobs:
           sudo modprobe vcan || true
 
       - name: Run gateway tests
-        run: ctest --test-dir build-gateway --output-on-failure
+        run: |
+          ctest --test-dir build-gateway --output-on-failure 2>&1 | tee gateway-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      # Test output is hard to fetch from some tools; failing lines go into an annotation.
+      - name: Summarise failure
+        if: failure()
+        run: |
+          [ -f gateway-test.log ] && echo "::error title=gateway tests (${{ matrix.os }})::$(grep -E 'FAIL|CHECK|Failed|Timeout|\*\*\*' gateway-test.log | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          exit 0
+        shell: bash
 
   # The same sources must build and pass on both ROS 2 distributions (x86 containers).
   ros2:
@@ -205,24 +216,46 @@ jobs:
           exit 0
         shell: bash
 
-  # dashboard:
-  #   name: Dashboard (backend + frontend)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.11"
-  #     - name: Backend tests (FastAPI)
-  #       run: |
-  #         pip install -r dashboard/backend/requirements.txt
-  #         pytest dashboard/backend
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: "20"
-  #     - name: Frontend build and tests (Svelte)
-  #       run: |
-  #         cd dashboard/frontend
-  #         npm ci
-  #         npm run build
-  #         npm test
+  dashboard:
+    name: Dashboard (backend + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Backend lint and tests (FastAPI)
+        run: |
+          pip install -r dashboard/backend/requirements.txt ruff
+          ruff check dashboard/backend 2>&1 | tee backend.log
+          test "${PIPESTATUS[0]}" -eq 0
+          cd dashboard/backend
+          pytest -q 2>&1 | tee ../../backend.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No lockfile is committed yet, so this installs the versions pinned in package.json.
+      - name: Frontend build (Svelte + uPlot)
+        run: |
+          cd dashboard/frontend
+          npm install --no-audit --no-fund 2>&1 | tee ../../frontend.log
+          test "${PIPESTATUS[0]}" -eq 0
+          npm run build 2>&1 | tee -a ../../frontend.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      # The tail of a failure goes into an annotation, where it is easy to read.
+      - name: Summarise failure
+        if: failure()
+        run: |
+          for f in backend.log frontend.log; do
+            [ -f "$f" ] && echo "::error title=dashboard $f::$(grep -iE 'error|fail|assert|Traceback|warn' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          done
+          exit 0
+        shell: bash

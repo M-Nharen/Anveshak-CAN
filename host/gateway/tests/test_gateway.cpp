@@ -206,7 +206,8 @@ TEST(with_auto_takeover_the_standby_claims_after_the_leader_vanishes) {
     if (hb.host_node == 1) last_master_frame = std::max(last_master_frame, ts);
 
   CHECK(wait_until([&] { return rpi.role() == Role::Master; }, 900));
-  CHECK(rpi.saw(EventType::LeaderLost));
+  // Events are delivered just after the state changes, so wait for them instead of sampling once.
+  CHECK(wait_until([&] { return rpi.saw(EventType::LeaderLost) && rpi.saw(EventType::RoleChanged); }, 300));
   const GatewayEvent claimed = rpi.first(EventType::RoleChanged);
   CHECK(claimed.time_ns - last_master_frame >= 250 * kMs - kMs);
   CHECK(claimed.time_ns - last_master_frame <= 450 * kMs);
