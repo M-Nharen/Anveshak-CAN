@@ -1,0 +1,5 @@
+# Ask host 1 (Orin) or 2 (RPi) to lead: a LEAD_REQUEST frame on the bus.
+uint8 host_id
+---
+bool success
+string message

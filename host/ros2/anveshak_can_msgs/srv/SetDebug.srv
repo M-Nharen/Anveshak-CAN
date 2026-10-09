@@ -1,0 +1,7 @@
+# Stub: answered with success = false until debug levels land.
+uint8 node_id      # 0 = all nodes
+uint8 level        # 0-3
+uint8 category_mask
+---
+bool success
+string message

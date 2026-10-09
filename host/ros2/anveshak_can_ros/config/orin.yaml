@@ -1,0 +1,23 @@
+# can_gateway parameters for the Jetson Orin host.
+can_gateway:
+  ros__parameters:
+    bus: socketcan          # "fake" runs an in-process simulated rover (development, tests)
+    interface_name: can0
+    host_id: 1
+    tie_break: 0            # 0 = use host_id
+    auto_takeover: false    # a standby host never takes over by itself unless this is true
+    rt_priority: 50
+    cpu_affinity: -1      # pin the CAN threads to this core; -1 = no pinning
+
+    # Skid-steer geometry for /cmd_vel. Measure these on the rover.
+    wheel_radius: 0.15      # m
+    track_width: 0.60       # m
+    left_drives: [1, 2, 3]
+    right_drives: [4, 5, 6]
+    invert_left: false
+    invert_right: false
+    accel_limit: 10.0       # rad/s^2
+    cmd_timeout_s: 0.5      # stop the wheels when no command arrived for this long
+    status_rate_hz: 10.0
+
+    debug_level: 0          # stored only for now
