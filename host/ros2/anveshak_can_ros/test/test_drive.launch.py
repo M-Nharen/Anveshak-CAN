@@ -67,10 +67,13 @@ class TestDrive(unittest.TestCase):
     def test_drive_sequence(self):
         # All seven simulated nodes (six drives and the FPGA) show up.
         self.assertTrue(
-            self.spin_until(lambda: self.nodes is not None and sum(n.alive for n in self.nodes.nodes) >= 7),
+            self.spin_until(
+                lambda: self.nodes is not None
+                and sum(n.alive for n in self.nodes.nodes) >= 7
+                and self.bus is not None
+            ),
             "simulated nodes never became alive",
         )
-        self.assertIsNotNone(self.bus)
 
         # Arming before leading is refused.
         res = self.call(Arm, "/can/arm", Arm.Request())
