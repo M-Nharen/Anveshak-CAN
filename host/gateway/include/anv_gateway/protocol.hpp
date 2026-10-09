@@ -39,6 +39,16 @@ enum class NmtCommand : uint8_t { Arm = 1, Disarm = 2, Reset = 3, EnterBootloade
 
 enum class DriveMode : uint8_t { Coast = 0, Brake = 1, Velocity = 2, OpenLoopDuty = 3 };
 
+// Target for one drive node (two motor channels). Units: rad/s (or % duty in OpenLoopDuty mode).
+// Lives here (not in gateway.hpp) so anv_gateway/gateway_link.hpp can use it without depending on
+// gateway.hpp, which in turn only forward-declares GatewayLink: no include cycle either way.
+struct WheelTarget {
+  DriveMode mode = DriveMode::Velocity;
+  double a = 0.0;
+  double b = 0.0;
+  double accel = 10.0;  // rad/s^2 limit sent with every command
+};
+
 // HOST_HB flags byte
 constexpr uint8_t kHbFlagAutonomyReady = 1u << 0;
 constexpr uint8_t kHbFlagOperatorLink = 1u << 1;
@@ -46,6 +56,10 @@ constexpr uint8_t kHbFlagEstopLatched = 1u << 2;
 constexpr uint8_t kHbFlagArmed = 1u << 3;
 
 constexpr uint8_t kEstopMagic = 0xE5;
+
+// SERVICE opcodes used by the gateway itself (docs: "Node black box" / "Read and clear").
+constexpr uint8_t kServiceOpLogRead = 6;
+constexpr uint8_t kServiceOpLogClear = 7;
 
 // Wire scaling for DRIVE_CMD targets: 0.01 rad/s (or 0.01 % duty) per count.
 constexpr double kTargetScale = 100.0;

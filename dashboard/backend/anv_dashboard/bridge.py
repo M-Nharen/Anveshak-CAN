@@ -22,6 +22,11 @@ class Bridge(Protocol):
     async def estop(self) -> dict[str, Any]: ...
     async def release_estop(self) -> dict[str, Any]: ...
     async def request_lead(self, host: int) -> dict[str, Any]: ...
+    async def set_debug(
+        self, node_id: int, level: int, category_mask: int, auto_off_min: int
+    ) -> dict[str, Any]: ...
+    async def save_flight_recording(self, reason: str) -> dict[str, Any]: ...
+    async def events(self, since: int, max: int = 500) -> dict[str, Any]: ...
     async def close(self) -> None: ...
 
 
@@ -52,7 +57,7 @@ class _Line:
                 if not line:
                     raise ConnectionError("gateway closed the connection")
                 reply = json.loads(line)
-            except (OSError, ConnectionError, asyncio.TimeoutError, ValueError) as exc:
+            except (OSError, ConnectionError, TimeoutError, ValueError) as exc:
                 await self._drop()
                 raise BridgeError(f"gateway unreachable: {exc}") from exc
             if not isinstance(reply, dict):
@@ -101,6 +106,23 @@ class GatewayBridge:
 
     async def request_lead(self, host: int) -> dict[str, Any]:
         return await self._main.call("request_lead", host=host)
+
+    async def set_debug(
+        self, node_id: int, level: int, category_mask: int, auto_off_min: int
+    ) -> dict[str, Any]:
+        return await self._main.call(
+            "set_debug",
+            node_id=node_id,
+            level=level,
+            category_mask=category_mask,
+            auto_off_min=auto_off_min,
+        )
+
+    async def save_flight_recording(self, reason: str) -> dict[str, Any]:
+        return await self._main.call("save_flight_recording", reason=reason)
+
+    async def events(self, since: int, max: int = 500) -> dict[str, Any]:
+        return await self._main.call("events", since=since, max=max)
 
     async def close(self) -> None:
         await self._main.close()

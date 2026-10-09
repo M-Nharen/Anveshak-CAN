@@ -247,3 +247,62 @@ def test_garbage_messages_do_not_kill_the_connection():
         assert hub.clients
 
     run(main())
+
+
+def test_set_debug_and_save_flight_recording_need_login():
+    async def main():
+        hub, bridge, _ = make_hub()
+        anon = await connect(hub, login=False)
+        anon.say(t="set_debug", level=2, req=1)
+        anon.say(t="save_flight_recording", req=2)
+        await settle()
+        acks = {a["req"]: a for a in anon.acks()}
+        assert not acks[1]["ok"] and not acks[2]["ok"]
+        assert bridge.calls == []
+
+        ws = await connect(hub)
+        ws.say(t="set_debug", node_id=5, level=2, category_mask=7, auto_off_min=10, req=1)
+        ws.say(t="save_flight_recording", reason="test", req=2)
+        ws.say(t="set_debug", req=3)  # no level: rejected before it reaches the bridge
+        await settle()
+        acks = {a["req"]: a for a in ws.acks()}
+        assert acks[1]["ok"] and acks[2]["ok"]
+        assert not acks[3]["ok"]
+        assert bridge.calls == [
+            ("set_debug", (5, 2, 7, 10)),
+            ("save_flight_recording", "test"),
+        ]
+
+    run(main())
+
+
+def test_errors_page_snapshot_picks_up_polled_events():
+    async def main():
+        hub, bridge, _ = make_hub()
+        bridge.events_value = [
+            {
+                "seq": 1, "time_ns": 1, "type": "NODE_EVENT", "node_id": 4, "term": 0, "role": 0,
+                "code": 0x0304, "severity": 1, "detail": 0, "cleared": False,
+            },
+            {
+                "seq": 2, "time_ns": 2, "type": "GATEWAY_LINK_LOST", "node_id": 0, "term": 0, "role": 0,
+                "code": 0x8010, "severity": 1, "detail": 0, "cleared": False,
+            },
+        ]  # fmt: skip
+        ws = await connect(hub)
+        ws.say(t="page", page="errors")
+        await settle()
+        await hub.poll_once()
+        await hub.push_once()
+        page = ws.sent[-1]["errors"]
+        names = {e["name"] for e in page["events"]}
+        assert names == {"STALL_DETECTED", "GATEWAY_LINK_LOST"}
+        assert any(e["name"] == "STALL_DETECTED" for e in page["active"])
+        assert page["bus_errors"][0]["type"] == "ack"
+        assert hub._events_seq == 2
+
+        # Polling again with no new events must not duplicate what is already cached.
+        await hub.poll_once()
+        assert len(hub.events) == 2
+
+    run(main())

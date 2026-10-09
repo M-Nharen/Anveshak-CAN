@@ -29,9 +29,13 @@ def make_state(**over: Any) -> dict[str, Any]:
         "leader_lost": False, "armed": False, "estop_latched": False, "cycles_sent": 100, "late_cycles": 2,
         "worst_lateness_us": 300,
         "bus": {"rx_frames": 1000, "tx_frames": 500, "tx_failures": 0, "error_frames": 0, "undecoded_frames": 0,
-                "bus_off": False, "rx_fps": 600.0},
+                "bus_off": False, "rx_fps": 600.0,
+                "error_types": {"other": 0, "ack": 0, "stuff": 0, "form": 0, "bit": 0}},
         "peers": [{"host": h, "seen": h == 2, "role": 1, "term": 3} for h in (1, 2, 3)],
         "nodes": [make_node(4 + i) for i in range(6)],
+        "debug": {"level": 0, "on": False, "auto_off_s": 0},
+        "flight_recorder_enabled": True,
+        "link": {"configured": False, "up": False},
     }  # fmt: skip
     st.update(over)
     return st
@@ -44,6 +48,7 @@ class FakeBridge:
         self.state_value = make_state() if state is None else state
         self.calls: list[tuple[str, Any]] = []
         self.targets: list[list[dict[str, float]]] = []
+        self.events_value: list[dict[str, Any]] = []
         self.fail = False
 
     async def state(self) -> dict[str, Any]:
@@ -75,6 +80,25 @@ class FakeBridge:
 
     async def request_lead(self, host: int) -> dict[str, Any]:
         return await self._cmd("request_lead", host)
+
+    async def set_debug(
+        self, node_id: int, level: int, category_mask: int, auto_off_min: int
+    ) -> dict[str, Any]:
+        return await self._cmd(
+            "set_debug", (node_id, level, category_mask, auto_off_min)
+        )
+
+    async def save_flight_recording(self, reason: str) -> dict[str, Any]:
+        if self.fail:
+            raise BridgeError("down")
+        self.calls.append(("save_flight_recording", reason))
+        return {"ok": True, "path": "/tmp/flight.log"}
+
+    async def events(self, since: int, max: int = 500) -> dict[str, Any]:
+        if self.fail:
+            raise BridgeError("down")
+        new = [e for e in self.events_value if e["seq"] > since]
+        return {"ok": True, "events": new[:max]}
 
     async def close(self) -> None:
         pass

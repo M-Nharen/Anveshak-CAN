@@ -8,7 +8,7 @@ import launch_ros.actions
 import launch_testing.actions
 import pytest
 import rclpy
-from anveshak_can_msgs.msg import BusStatus, DriveFeedback, NodeRegistry
+from anveshak_can_msgs.msg import BusStatus, CanErrorEvent, DriveFeedback, NodeRegistry
 from anveshak_can_msgs.srv import Arm, Disarm, Estop, ParamGet, RequestLead, SetDebug
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Twist
@@ -35,10 +35,12 @@ class TestDrive(unittest.TestCase):
         cls.bus = None
         cls.nodes = None
         cls.diag = None
+        cls.errors = []
         cls.node.create_subscription(DriveFeedback, "/can/drive/feedback", lambda m: setattr(cls, "fb", m), 10)
         cls.node.create_subscription(BusStatus, "/can/bus", lambda m: setattr(cls, "bus", m), 10)
         cls.node.create_subscription(NodeRegistry, "/can/nodes", lambda m: setattr(cls, "nodes", m), 10)
         cls.node.create_subscription(DiagnosticArray, "/diagnostics", lambda m: setattr(cls, "diag", m), 10)
+        cls.node.create_subscription(CanErrorEvent, "/can/errors", lambda m: cls.errors.append(m), 50)
         cls.cmd_vel = cls.node.create_publisher(Twist, "/cmd_vel", 10)
 
     @classmethod
@@ -114,11 +116,16 @@ class TestDrive(unittest.TestCase):
         self.assertIsNotNone(self.diag)
         self.assertTrue(any(s.name == "can_gateway" for s in self.diag.status))
 
-        # Stub services answer, they just say no.
+        # /can/param_get is still a stub (B5's job); /can/set_debug actually applies now (B4) and
+        # the change shows up as a DEBUG_LEVEL_CHANGED event on /can/errors.
         res = self.call(ParamGet, "/can/param_get", ParamGet.Request(node_id=4, index=0))
         self.assertFalse(res.success)
         res = self.call(SetDebug, "/can/set_debug", SetDebug.Request(node_id=0, level=1, category_mask=0))
-        self.assertFalse(res.success)
+        self.assertTrue(res.success, res.message)
+        self.assertTrue(
+            self.spin_until(lambda: any(e.type == "DEBUG_LEVEL_CHANGED" and e.detail == 1 for e in self.errors)),
+            "debug level change was never reported on /can/errors",
+        )
 
         # E-stop and release.
         res = self.call(Estop, "/can/estop", Estop.Request(release=False))

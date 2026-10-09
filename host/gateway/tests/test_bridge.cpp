@@ -1,7 +1,11 @@
 // The Unix-socket bridge on a gateway running on the in-process fake bus.
+#include <dirent.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+#include <cstdio>
+#include <cstdlib>
 
 #include "anv_gateway/bridge.hpp"
 #include "test_util.hpp"
@@ -136,6 +140,55 @@ TEST(bridge_handles_several_clients_and_a_closed_one) {
   gw.stop();
   Client late(socket_path());
   CHECK(!late.ok());  // the socket file is gone after stop()
+}
+
+TEST(bridge_exposes_debug_levels_flight_recorder_and_events) {
+  FakeBusHub hub;
+  Gateway gw(host_config(1), hub.connect());
+  gw.start();
+  Bridge bridge(gw, socket_path());
+  std::string err;
+  CHECK(bridge.start(&err));
+  Client c(socket_path());
+  CHECK(c.ok());
+
+  CHECK(has(c.call("{\"id\":1,\"cmd\":\"set_debug\",\"node_id\":0,\"level\":9}"), "\"ok\":false"));
+  const std::string ok = c.call("{\"id\":2,\"cmd\":\"set_debug\",\"node_id\":0,\"level\":1}");
+  CHECK(has(ok, "\"ok\":true"));
+  CHECK(has(c.call("{\"id\":3,\"cmd\":\"state\"}"), "\"debug\":{\"level\":1,\"on\":false"));
+
+  char dir[] = "/tmp/anv_bridge_flight_XXXXXX";
+  CHECK(::mkdtemp(dir) != nullptr);
+  gw.stop();  // reconfigure with a flight_recorder_dir; simplest is a fresh gateway
+  GatewayConfig cfg = host_config(1);
+  cfg.flight_recorder_dir = dir;
+  Gateway gw2(cfg, hub.connect());
+  gw2.start();
+  Bridge bridge2(gw2, socket_path() + "2");
+  CHECK(bridge2.start(&err));
+  Client c2(socket_path() + "2");
+  CHECK(c2.ok());
+  const std::string saved = c2.call("{\"id\":1,\"cmd\":\"save_flight_recording\",\"reason\":\"test\"}");
+  CHECK(has(saved, "\"ok\":true"));
+  CHECK(has(saved, dir));
+
+  const std::string events = c2.call("{\"id\":2,\"cmd\":\"events\"}");
+  CHECK(has(events, "\"ok\":true"));
+  CHECK(has(events, "FLIGHT_RECORDER_SAVED"));
+
+  bridge2.stop();
+  gw2.stop();
+  bridge.stop();
+
+  DIR* d = ::opendir(dir);
+  if (d) {
+    for (dirent* ent = ::readdir(d); ent != nullptr; ent = ::readdir(d)) {
+      const std::string name = ent->d_name;
+      if (name != "." && name != "..") std::remove((std::string(dir) + "/" + name).c_str());
+    }
+    ::closedir(d);
+  }
+  ::rmdir(dir);
 }
 
 int main() { return run_all(); }

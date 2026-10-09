@@ -1,5 +1,7 @@
 #include "anv_gateway/leadership.hpp"
 
+#include "errors.h"
+
 namespace anv::gw {
 
 LeaderElection::LeaderElection(ElectionConfig cfg) : cfg_(cfg) {}
@@ -104,6 +106,8 @@ void LeaderElection::tick(int64_t now_ns, std::vector<GatewayEvent>& events) {
     e.time_ns = now_ns;
     e.node_id = master_id_;
     e.term = master_term_;
+    e.code = ROVER_ERR_LEADER_LOST;
+    e.severity = static_cast<uint8_t>(ROVER_SEVERITY_CRITICAL);
     events.push_back(e);
     master_id_ = 0;
     leader_lost_ = true;

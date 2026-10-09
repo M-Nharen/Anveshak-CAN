@@ -16,6 +16,21 @@ struct GatewayConfig {
   std::string bridge_socket;  // Unix socket for the dashboard backend; empty = no bridge
   int cpu_affinity = -1;    // pin the CAN threads to this core (RPi); -1 = no pinning
 
+  // Flight recorder (docs: "Flight recorder (separate switch, on by default)"). Empty dir = the
+  // ring buffer is still kept in memory, but save() has nowhere to write.
+  bool flight_recorder = true;
+  std::string flight_recorder_dir;
+
+  // Event log file, one JSON line per event (docs: "event log file from level 1"). Empty = off.
+  std::string event_log_dir;
+
+  // The UDP link to the other host's gateway (docs: "The gateway link"). Off by default: a
+  // single-host setup (bench testing, CI) needs neither port.
+  bool link_enabled = false;
+  uint16_t link_listen_port = 0;
+  std::string link_peer_host;
+  uint16_t link_peer_port = 0;
+
   uint8_t effective_tie_break() const { return tie_break != 0 ? tie_break : host_id; }
 };
 

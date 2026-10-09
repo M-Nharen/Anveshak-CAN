@@ -18,6 +18,6 @@ message(STATUS "anveshak_can_ros: building for ROS 2 ${ANV_ROS_DISTRO}")
 
 # Link a target against the ROS libraries the node needs.
 macro(anv_link_ros target)
-  ament_target_dependencies(${target} rclcpp geometry_msgs diagnostic_msgs builtin_interfaces anveshak_can_msgs)
+  ament_target_dependencies(${target} rclcpp rcl_interfaces geometry_msgs diagnostic_msgs builtin_interfaces anveshak_can_msgs)
   target_compile_definitions(${target} PRIVATE ${ANV_ROS_COMPILE_DEFINITIONS})
 endmacro()

@@ -77,6 +77,22 @@ bool parse_config_text(const std::string& text, GatewayConfig& out, std::string*
     } else if (key == "cpu_affinity") {
       if (!parse_int(value, n) || n < -1 || n > 1023) return fail(error, line_no, "cpu_affinity must be -1 or a core number");
       cfg.cpu_affinity = static_cast<int>(n);
+    } else if (key == "flight_recorder") {
+      if (!parse_bool(value, cfg.flight_recorder)) return fail(error, line_no, "flight_recorder must be true or false");
+    } else if (key == "flight_recorder_dir") {
+      cfg.flight_recorder_dir = value;
+    } else if (key == "event_log_dir") {
+      cfg.event_log_dir = value;
+    } else if (key == "link_enabled") {
+      if (!parse_bool(value, cfg.link_enabled)) return fail(error, line_no, "link_enabled must be true or false");
+    } else if (key == "link_listen_port") {
+      if (!parse_int(value, n) || n < 1 || n > 65535) return fail(error, line_no, "link_listen_port must be 1-65535");
+      cfg.link_listen_port = static_cast<uint16_t>(n);
+    } else if (key == "link_peer_host") {
+      cfg.link_peer_host = value;
+    } else if (key == "link_peer_port") {
+      if (!parse_int(value, n) || n < 1 || n > 65535) return fail(error, line_no, "link_peer_port must be 1-65535");
+      cfg.link_peer_port = static_cast<uint16_t>(n);
     } else {
       return fail(error, line_no, "unknown key '" + key + "'");
     }
