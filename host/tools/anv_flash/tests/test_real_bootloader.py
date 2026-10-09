@@ -24,13 +24,15 @@ from anv_flash.image import FirmwareImage
 from conftest import make_image
 
 EXE = os.environ.get("ANV_BL_STDIO_NODE")
-pytestmark = pytest.mark.skipif(not EXE or not os.path.exists(EXE), reason="ANV_BL_STDIO_NODE not built")
+# Skipped only when not asked for: if ANV_BL_STDIO_NODE is set (CI), a missing binary fails.
+pytestmark = pytest.mark.skipif(not EXE, reason="ANV_BL_STDIO_NODE not set")
 
 
 class StdioNode:
     """Bridges bl_stdio_node to the virtual bus; plays the application after a jump."""
 
     def __init__(self, channel: str, db, node_id: int, uid_byte: int) -> None:
+        assert EXE and os.path.exists(EXE), f"ANV_BL_STDIO_NODE={EXE} does not exist"
         self.node_id = node_id
         self.proc = subprocess.Popen(
             [EXE, str(node_id), f"{uid_byte:02X}"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
