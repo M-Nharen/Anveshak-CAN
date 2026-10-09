@@ -16,7 +16,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        run: pip install -r defs/requirements.txt -r host/sim/requirements.txt ruff
+        run: pip install -r defs/requirements.txt -r host/sim/requirements.txt ruff==0.16.10
 
       - name: Validate defs/rover.dbc and defs/errors.yaml
         run: python defs/codegen/check.py
@@ -228,7 +228,7 @@ jobs:
 
       - name: Backend lint and tests (FastAPI)
         run: |
-          pip install -r dashboard/backend/requirements.txt ruff
+          pip install -r dashboard/backend/requirements.txt ruff==0.16.10
           ruff check dashboard/backend 2>&1 | tee backend.log
           test "${PIPESTATUS[0]}" -eq 0
           cd dashboard/backend
