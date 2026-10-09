@@ -3,11 +3,11 @@
 import json
 import time
 
-from fakes import FakeBridge
 from fastapi.testclient import TestClient
 
 from anv_dashboard.app import create_app
 from anv_dashboard.settings import Settings
+from fakes import FakeBridge
 
 
 def make_client(**over):

@@ -1,7 +1,6 @@
-from fakes import make_node, make_state
-
 from anv_dashboard import views
 from anv_dashboard.settings import Settings
+from fakes import make_node, make_state
 
 
 def test_header_prompts_for_a_leader():

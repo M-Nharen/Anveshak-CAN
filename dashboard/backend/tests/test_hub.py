@@ -1,9 +1,8 @@
 import asyncio
 
-from fakes import FakeBridge, FakeWS
-
 from anv_dashboard.hub import Hub
 from anv_dashboard.settings import Settings
+from fakes import FakeBridge, FakeWS
 
 
 class Clock:
