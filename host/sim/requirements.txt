@@ -1,0 +1,3 @@
+-r ../../defs/requirements.txt
+python-can>=4.3
+pytest>=7
