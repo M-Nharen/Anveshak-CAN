@@ -51,20 +51,41 @@ jobs:
   #           -DCMAKE_TOOLCHAIN_FILE=firmware/cmake/arm-none-eabi.cmake
   #         cmake --build build-stm32
 
-  # gateway:
-  #   name: Gateway core + ROS 2 (${{ matrix.ros_distro }})
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       ros_distro: [humble, jazzy]
-  #   container: ros:${{ matrix.ros_distro }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Build host/gateway and host/ros2/anveshak_can_ros
-  #       run: |
-  #         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
-  #         colcon build --packages-select anveshak_can_msgs anveshak_can_ros
-  #         colcon test --packages-select anveshak_can_msgs anveshak_can_ros
+  gateway:
+    name: Gateway core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake g++ iproute2 kmod
+
+      - name: Build host/gateway (warnings are errors)
+        run: |
+          cmake -S host/gateway -B build-gateway -DCMAKE_BUILD_TYPE=Debug -DANV_WERROR=ON
+          cmake --build build-gateway -j"$(nproc)"
+
+      # The end-to-end test (real anv_can_gateway + Python simulator on vcan0) needs the vcan kernel
+      # module. Hosted runners may not ship it; the test then reports itself as skipped.
+      - name: Install simulator dependencies and vcan (best effort)
+        run: |
+          pip install -r defs/requirements.txt -r host/sim/requirements.txt
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" || true
+          sudo modprobe vcan || true
+
+      - name: Run gateway tests
+        run: ctest --test-dir build-gateway --output-on-failure
+
+  # ros2: the ROS 2 build and test jobs (anveshak_can_msgs, anveshak_can_ros on the ros:humble and
+  # ros:jazzy containers) are added by prompt B2, next to the gateway job above.
 
   # dashboard:
   #   name: Dashboard (backend + frontend)
