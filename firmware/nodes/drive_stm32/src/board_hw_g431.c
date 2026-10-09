@@ -1,5 +1,6 @@
 #include "board_hw_g431.h"
 
+#include "app_image.h"
 #include "board_config.h"
 
 FDCAN_HandleTypeDef hfdcan1;
@@ -319,8 +320,8 @@ void board_hw_init(void)
     s_board_hooks.set_outputs_off = board_set_outputs_off;
     s_board_hooks.feed_hw_watchdog = board_feed_hw_watchdog;
     s_board_hooks.now_ms = board_now_ms;
-    s_board_hooks.enter_bootloader = NULL; /* bootloader entry: out of scope (CLAUDE.md A2) */
-    s_board_hooks.request_reset = NULL;
+    s_board_hooks.enter_bootloader = app_image_enter_bootloader;
+    s_board_hooks.request_reset = app_image_request_reset;
     s_board_hooks.storage_load = NULL; /* flash-backed parameter storage: left for a later prompt */
     s_board_hooks.storage_save = NULL;
 

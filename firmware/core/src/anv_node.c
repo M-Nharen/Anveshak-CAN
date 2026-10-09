@@ -152,10 +152,18 @@ static void handle_nmt(anv_node_t *node, const acc_can_frame_t *frame)
         }
         break;
     case ANV_NMT_CMD_ENTER_BOOTLOADER:
-        if (node->board->enter_bootloader != NULL) {
-            node->board->enter_bootloader(node->board->ctx);
+        /* Accepted only from DISARMED (the state machine refuses it otherwise). Outputs go
+         * off first, then the "stay in bootloader" flag is set and the MCU resets into the
+         * bootloader, which sees the flag and waits for the host. */
+        if (anv_state_handle(&node->state, ANV_EVENT_ENTER_BOOTLOADER)) {
+            enforce_safe_outputs(node);
+            if (node->board->enter_bootloader != NULL) {
+                node->board->enter_bootloader(node->board->ctx);
+            }
+            if (node->board->request_reset != NULL) {
+                node->board->request_reset(node->board->ctx);
+            }
         }
-        (void)anv_state_handle(&node->state, ANV_EVENT_ENTER_BOOTLOADER);
         break;
     case ANV_NMT_CMD_FAULT_RESET:
         if (!node->fault_active) {

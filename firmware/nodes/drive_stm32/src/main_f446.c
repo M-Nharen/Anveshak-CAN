@@ -3,14 +3,14 @@
  * receive -> dispatch, tick for watchdogs/heartbeat/telemetry. The 1 kHz PID step runs from
  * TIM7's interrupt (board_hw_f446.c) via board_hw_pid_tick() below.
  *
- * This builds as a static library, not a linked firmware image (see CMakeLists.txt): there is
- * no startup code, vector table or linker script here, so main()/SystemClock_Config() below
- * prove the wiring compiles but are never actually executed. A real board project supplies
- * those and links this code into it.
+ * image.cmake links this into a flashable image that runs behind the CAN bootloader
+ * (ld/drive_app_f446.ld, ST's startup file, src/app_image.c). SystemClock_Config() below is
+ * still a placeholder (see README.md).
  */
 #include "board_hw_f446.h"
 
 #include "acc_can_bxcan.h"
+#include "app_image.h"
 #include "board_config.h"
 #include "drive_app.h"
 #include "ids.h"
@@ -89,6 +89,7 @@ int main(void)
     (void)can_driver.init(can_driver.ctx, 500000u, filters, 2u);
 
     anv_node_info_t info = {0};
+    info.git_build_id = app_image_build_id();
     uint32_t now_ms = HAL_GetTick();
     drive_app_init(&s_app, node_id, &can_driver, s_txq_storage, DRIVE_TXQ_CAP_PER_PRIO, &s_param_store, &info,
                    board_hw_board_hooks(), board_hw_motor_hw(), board_hw_telem_hw(), now_ms);

@@ -45,3 +45,8 @@ if(ANV_BUILD_DRIVE_STM32_G431)
   target_compile_definitions(drive_stm32_g431 PRIVATE DRIVE_BOARD_G431)
   target_link_libraries(drive_stm32_g431 PRIVATE drive_app acc_can_fdcan)
 endif()
+
+# Linked, stamped images that run behind the CAN bootloader (A3): image.cmake.
+if(CMAKE_CROSSCOMPILING AND (ANV_BUILD_DRIVE_STM32_F446 OR ANV_BUILD_DRIVE_STM32_G431))
+  include(image.cmake)
+endif()

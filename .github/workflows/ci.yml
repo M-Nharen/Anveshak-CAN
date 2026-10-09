@@ -27,7 +27,7 @@ jobs:
           git diff --exit-code -- firmware/generated defs/generated
 
       - name: Lint Python sources
-        run: ruff check defs/codegen host/sim
+        run: ruff check defs/codegen host/sim host/tools/anv_flash
 
       - name: Run simulator tests
         run: pytest host/sim -v
@@ -38,11 +38,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Build anveshak_can_core for Linux and run loopback-driver unit tests
         run: |
           cmake -S firmware -B build -DCMAKE_BUILD_TYPE=Debug
           cmake --build build
           ctest --test-dir build --output-on-failure
+
+      # anv-flash against fake nodes, and against the real C bootloader built just above
+      # (bootloader_stm32's bl_stdio_node), so the two sides of the protocol are tested together.
+      - name: anv-flash tests (fake nodes + the real bootloader)
+        run: |
+          pip install -r host/tools/anv_flash/requirements.txt
+          ANV_BL_STDIO_NODE="$GITHUB_WORKSPACE/build/bootloader_stm32/bl_stdio_node" pytest host/tools/anv_flash -v
 
       - name: Cross-compile anveshak_can_core for Cortex-M4 (compile-only, arm-none-eabi-gcc)
         run: |
@@ -51,11 +62,11 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/firmware/cmake/arm-none-eabi.cmake"
           cmake --build build-arm
 
-      # bxCAN (F446) and FDCAN (G431) each need their family's ST CMSIS device headers and HAL
-      # driver headers (not the full STM32Cube* repos, which vendor those as submodules --
-      # fetching the two split repos directly is much smaller). Headers only: these drivers
-      # build as static libraries with no startup code or linker script (see
-      # firmware/nodes/drive_stm32/README.md), so nothing needs the HAL's own .c sources.
+      # bxCAN (F446) and FDCAN (G431) each need their family's ST CMSIS device repo and HAL
+      # driver repo (not the full STM32Cube* repos, which vendor those as submodules --
+      # fetching the two split repos directly is much smaller). The linked images (CAN
+      # bootloader and drive application) also use their startup/system templates and HAL
+      # sources (firmware/bootloader_stm32/README.md).
       - name: Fetch ST CMSIS/HAL headers for the F446 and G431 drive node builds
         run: |
           mkdir -p "$RUNNER_TEMP/stm32-headers"
@@ -66,7 +77,7 @@ jobs:
           git clone --depth 1 --filter=blob:none --sparse https://github.com/STMicroelectronics/STM32CubeF4.git "$RUNNER_TEMP/stm32-headers/cubef4"
           git -C "$RUNNER_TEMP/stm32-headers/cubef4" sparse-checkout set Drivers/CMSIS/Include
 
-      - name: Cross-compile the drive node for STM32F446 (bxCAN, compile-only)
+      - name: Cross-compile the drive node and CAN bootloader for STM32F446 (bxCAN, compile-only)
         run: |
           H="$RUNNER_TEMP/stm32-headers"
           cmake -S firmware -B build-f446 \
@@ -81,7 +92,7 @@ jobs:
             -DANV_CAN_BXCAN_CLOCK_HZ=45000000
           cmake --build build-f446
 
-      - name: Cross-compile the drive node for STM32G431 (FDCAN, compile-only)
+      - name: Cross-compile the drive node and CAN bootloader for STM32G431 (FDCAN, compile-only)
         run: |
           H="$RUNNER_TEMP/stm32-headers"
           cmake -S firmware -B build-g431 \
@@ -95,6 +106,17 @@ jobs:
             -DANV_CAN_FDCAN_FAMILY=G4 \
             -DANV_CAN_FDCAN_CLOCK_HZ=160000000
           cmake --build build-g431
+
+      - name: Upload bootloader and application images
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32-images
+          path: |
+            build-*/bootloader_stm32/anv_bootloader_*.bin
+            build-*/bootloader_stm32/anv_bootloader_*.elf
+            build-*/nodes/drive_stm32/drive_app_*.bin
+            build-*/nodes/drive_stm32/drive_app_*.elf
+          if-no-files-found: error
 
   esp32s3:
     name: ESP32-S3 sensor node template (espressif/idf Docker image)

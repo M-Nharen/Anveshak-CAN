@@ -14,6 +14,10 @@ set(CMAKE_ASM_COMPILER arm-none-eabi-gcc)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=cortex-m4 -mthumb -mfloat-abi=soft")
+# One section per function/object, so linked images (bootloader_stm32, the drive node's
+# image.cmake) can drop everything unused with --gc-sections -- in particular the generated
+# pack/unpack code for every message in the DBC. No effect on static-library-only builds.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

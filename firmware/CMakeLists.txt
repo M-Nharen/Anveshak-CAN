@@ -29,6 +29,7 @@ add_subdirectory(drivers/loopback)
 add_subdirectory(drivers/bxcan)
 add_subdirectory(drivers/fdcan)
 add_subdirectory(nodes/drive_stm32)
+add_subdirectory(bootloader_stm32)
 
 if(NOT CMAKE_CROSSCOMPILING)
   add_subdirectory(tests)
