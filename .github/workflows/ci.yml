@@ -84,7 +84,18 @@ jobs:
           sudo modprobe vcan || true
 
       - name: Run gateway tests
-        run: ctest --test-dir build-gateway --output-on-failure
+        run: |
+          ctest --test-dir build-gateway --output-on-failure 2>&1 | tee gateway-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      # Test output is hard to fetch from some tools; failing lines go into an annotation.
+      - name: Summarise failure
+        if: failure()
+        run: |
+          [ -f gateway-test.log ] && echo "::error title=gateway tests (${{ matrix.os }})::$(grep -E 'FAIL|CHECK|Failed|Timeout|\*\*\*' gateway-test.log | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          exit 0
+        shell: bash
 
   # ros2: the ROS 2 build and test jobs (anveshak_can_msgs, anveshak_can_ros on the ros:humble and
   # ros:jazzy containers) are added by prompt B2, next to the gateway job above.
