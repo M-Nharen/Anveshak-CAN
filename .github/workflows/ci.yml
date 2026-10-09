@@ -32,24 +32,26 @@ jobs:
       - name: Run simulator tests
         run: pytest host/sim -v
 
-  # --- Later P0 siblings fill these in; left here so the pipeline shape is visible early. ---
+  firmware:
+    name: Firmware (core library, host-side unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-  # firmware:
-  #   name: Firmware (core library, host-side unit tests)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Build anveshak_can_core for Linux and run loopback-driver unit tests
-  #       run: |
-  #         cmake -S firmware -B build -DCMAKE_BUILD_TYPE=Debug
-  #         cmake --build build
-  #         ctest --test-dir build --output-on-failure
-  #     - name: Cross-compile the drive node application (compile-only, arm-none-eabi-gcc)
-  #       run: |
-  #         sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
-  #         cmake -S firmware/nodes/drive_stm32 -B build-stm32 \
-  #           -DCMAKE_TOOLCHAIN_FILE=firmware/cmake/arm-none-eabi.cmake
-  #         cmake --build build-stm32
+      - name: Build anveshak_can_core for Linux and run loopback-driver unit tests
+        run: |
+          cmake -S firmware -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+      - name: Cross-compile anveshak_can_core for Cortex-M4 (compile-only, arm-none-eabi-gcc)
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+          cmake -S firmware -B build-arm \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/firmware/cmake/arm-none-eabi.cmake"
+          cmake --build build-arm
+
+  # --- Later P0 siblings fill these in; left here so the pipeline shape is visible early. ---
 
   # gateway:
   #   name: Gateway core + ROS 2 (${{ matrix.ros_distro }})
