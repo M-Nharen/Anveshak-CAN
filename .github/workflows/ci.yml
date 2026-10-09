@@ -132,10 +132,10 @@ jobs:
         if: failure()
         run: |
           for f in build.log test.log; do
-            [ -f "$f" ] && echo "::error title=ros2 ${{ matrix.distro }} $f::$(grep -iE 'error|fail|assert|Traceback' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            [ -f "$f" ] && echo "::error title=ros2 ${{ matrix.distro }} $f::$(grep -iE 'error|fail|assert|Traceback|fatal|can_gateway_node-1' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
           done
           for f in log/latest_test/*/stdout_stderr.log; do
-            [ -f "$f" ] && echo "::error title=ros2 ${{ matrix.distro }} $f::$(grep -iE 'error|fail|assert|Traceback' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            [ -f "$f" ] && echo "::error title=ros2 ${{ matrix.distro }} $f::$(grep -iE 'error|fail|assert|Traceback|fatal|can_gateway_node-1' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
           done
           exit 0
         shell: bash
