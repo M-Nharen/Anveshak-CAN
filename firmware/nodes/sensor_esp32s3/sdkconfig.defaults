@@ -1,0 +1,20 @@
+# 4 MB flash, custom OTA partition table with two app slots and a coredump region
+# (docs/architecture.md, "Firmware updates over CAN"; see partitions.csv).
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Rollback: new firmware stays on probation until the application marks itself valid, so a
+# crash before that reverts to the previous OTA slot automatically (docs/architecture.md,
+# "Rollback is enabled in the build").
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Coredump to the dedicated flash partition above, for post-mortem debugging without a debug
+# probe attached.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# This template doesn't use Wi-Fi/Bluetooth yet, but leaves core 0 free for them
+# (docs/architecture.md, "ESP32-S3 nodes": the TWAI RX task is pinned to core 1).
+CONFIG_FREERTOS_UNICORE=n

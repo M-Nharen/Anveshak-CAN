@@ -51,6 +51,71 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/firmware/cmake/arm-none-eabi.cmake"
           cmake --build build-arm
 
+      # bxCAN (F446) and FDCAN (G431) each need their family's ST CMSIS device headers and HAL
+      # driver headers (not the full STM32Cube* repos, which vendor those as submodules --
+      # fetching the two split repos directly is much smaller). Headers only: these drivers
+      # build as static libraries with no startup code or linker script (see
+      # firmware/nodes/drive_stm32/README.md), so nothing needs the HAL's own .c sources.
+      - name: Fetch ST CMSIS/HAL headers for the F446 and G431 drive node builds
+        run: |
+          mkdir -p "$RUNNER_TEMP/stm32-headers"
+          git clone --depth 1 https://github.com/STMicroelectronics/cmsis_device_f4.git "$RUNNER_TEMP/stm32-headers/cmsis_device_f4"
+          git clone --depth 1 https://github.com/STMicroelectronics/stm32f4xx_hal_driver.git "$RUNNER_TEMP/stm32-headers/stm32f4xx_hal_driver"
+          git clone --depth 1 https://github.com/STMicroelectronics/cmsis_device_g4.git "$RUNNER_TEMP/stm32-headers/cmsis_device_g4"
+          git clone --depth 1 https://github.com/STMicroelectronics/stm32g4xx_hal_driver.git "$RUNNER_TEMP/stm32-headers/stm32g4xx_hal_driver"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/STMicroelectronics/STM32CubeF4.git "$RUNNER_TEMP/stm32-headers/cubef4"
+          git -C "$RUNNER_TEMP/stm32-headers/cubef4" sparse-checkout set Drivers/CMSIS/Include
+
+      - name: Cross-compile the drive node for STM32F446 (bxCAN, compile-only)
+        run: |
+          H="$RUNNER_TEMP/stm32-headers"
+          cmake -S firmware -B build-f446 \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/firmware/cmake/arm-none-eabi.cmake" \
+            -DANV_BUILD_DRIVE_STM32_F446=ON \
+            -DANV_STM32_CMSIS_CORE_DIR="$H/cubef4/Drivers/CMSIS/Include" \
+            -DANV_STM32_BXCAN_CMSIS_DEVICE_DIR="$H/cmsis_device_f4/Include" \
+            -DANV_STM32_BXCAN_HAL_DIR="$H/stm32f4xx_hal_driver" \
+            -DANV_STM32_BXCAN_DEVICE_DEFINE=STM32F446xx \
+            -DANV_STM32_BXCAN_CONF_DIR="$GITHUB_WORKSPACE/firmware/nodes/drive_stm32/boards/f446" \
+            -DANV_CAN_BXCAN_FAMILY=F4 \
+            -DANV_CAN_BXCAN_CLOCK_HZ=45000000
+          cmake --build build-f446
+
+      - name: Cross-compile the drive node for STM32G431 (FDCAN, compile-only)
+        run: |
+          H="$RUNNER_TEMP/stm32-headers"
+          cmake -S firmware -B build-g431 \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/firmware/cmake/arm-none-eabi.cmake" \
+            -DANV_BUILD_DRIVE_STM32_G431=ON \
+            -DANV_STM32_CMSIS_CORE_DIR="$H/cubef4/Drivers/CMSIS/Include" \
+            -DANV_STM32_FDCAN_CMSIS_DEVICE_DIR="$H/cmsis_device_g4/Include" \
+            -DANV_STM32_FDCAN_HAL_DIR="$H/stm32g4xx_hal_driver" \
+            -DANV_STM32_FDCAN_DEVICE_DEFINE=STM32G431xx \
+            -DANV_STM32_FDCAN_CONF_DIR="$GITHUB_WORKSPACE/firmware/nodes/drive_stm32/boards/g431" \
+            -DANV_CAN_FDCAN_FAMILY=G4 \
+            -DANV_CAN_FDCAN_CLOCK_HZ=160000000
+          cmake --build build-g431
+
+  esp32s3:
+    name: ESP32-S3 sensor node template (espressif/idf Docker image)
+    runs-on: ubuntu-latest
+    # ESP-IDF can't be installed standalone in this repo's other jobs; the official Docker
+    # image is the supported way to build it instead (CLAUDE.md: "If a tool you need can't be
+    # installed in this cloud VM ... add or extend the GitHub Actions workflow so CI builds and
+    # tests it").
+    container:
+      image: espressif/idf:v5.3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build firmware/nodes/sensor_esp32s3 for the ESP32-S3
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          cd firmware/nodes/sensor_esp32s3
+          idf.py set-target esp32s3
+          idf.py build
+
   # --- Later P0 siblings fill these in; left here so the pipeline shape is visible early. ---
 
   gateway:
