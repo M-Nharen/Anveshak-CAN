@@ -75,20 +75,11 @@ static int twai_drv_init(void *vctx, uint32_t bitrate_bps, const acc_can_filter_
     g_config.rx_queue_len = 32; /* sized for bursts, docs/architecture.md */
 
     /* ESP-IDF's ready-made 500 kbps timing is prescaler 8, seg1 15, seg2 4, SJW 3: 20 TQ per
-     * bit, 80% sample point (docs/architecture.md, "ESP32-S3 nodes"). Set explicitly via brp
-     * rather than TWAI_TIMING_CONFIG_500KBITS(), whose built-in macro uses a different
-     * (75%) sample point. */
-    twai_timing_config_t t_config = {
-        .clk_src = TWAI_CLK_SRC_DEFAULT,
-        .quanta_resolution_hz = 0,
-        .brp = 8,
-        .prop_seg = 0,
-        .tseg_1 = 15,
-        .tseg_2 = 4,
-        .sjw = 3,
-        .ssp_offset = 0,
-        .triple_sampling = false,
-    };
+     * bit, 80% sample point (docs/architecture.md, "ESP32-S3 nodes") -- exactly what
+     * TWAI_TIMING_CONFIG_500KBITS() gives. The struct's exact fields have changed across
+     * ESP-IDF versions (e.g. v5.3 has neither prop_seg nor ssp_offset), so the official macro
+     * is used rather than a hand-written literal. */
+    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
 
     twai_filter_config_t f_config;
     build_dual_filter(filters, n_filters, &f_config);
