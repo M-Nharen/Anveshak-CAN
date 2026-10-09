@@ -37,7 +37,10 @@ ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3}}"
   re-sends it at 50 Hz and stops the wheels after `cmd_timeout_s` without a new one.
 - Publishes: `/can/drive/feedback`, `/can/nodes`, `/can/bus`, `/can/events`, `/diagnostics`.
 - Services: `/can/arm`, `/can/disarm`, `/can/estop` (`release: true` sends ESTOP_RELEASE),
-  `/can/request_lead`. Stubs that answer `success: false`: `/can/param_get`, `/can/param_set`, `/can/set_debug`.
+  `/can/request_lead`, `/can/param_get`, `/can/param_set` (SERVICE GET/SET/SAVE on a drive node's
+  parameters), `/can/set_rate` (host rates directly, node rates via SERVICE SET), `/can/take_control`
+  (one holder at a time; while held, `/cmd_vel` is ignored and only `/cmd/drive` goes through).
+  Stub that answers `success: false`: `/can/set_debug` (debug levels are separate work, B4).
 - Parameters: see `config/orin.yaml` and `config/rpi.yaml`. `debug_level` is stored only.
 
 Distro differences live in `anveshak_can_ros/cmake/anv_ros_compat.cmake` (a check on `ROS_DISTRO`).

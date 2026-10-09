@@ -5,12 +5,20 @@
   import Overview from './lib/Overview.svelte';
   import Nodes from './lib/Nodes.svelte';
   import Drive from './lib/Drive.svelte';
+  import Rates from './lib/Rates.svelte';
+  import Parameters from './lib/Parameters.svelte';
+  import Firmware from './lib/Firmware.svelte';
+  import TestBench from './lib/TestBench.svelte';
   import Login from './lib/Login.svelte';
 
   const tabs = [
     ['overview', 'Overview'],
     ['nodes', 'Nodes'],
     ['drive', 'Drive'],
+    ['rates', 'Rates'],
+    ['parameters', 'Parameters'],
+    ['firmware', 'Firmware'],
+    ['test_bench', 'Test bench'],
   ];
 
   let page = tabs.some(([id]) => `#${id}` === location.hash) ? location.hash.slice(1) : 'overview';
@@ -52,6 +60,14 @@
         authed={$snapshot?.authed === true}
         connected={$connected}
       />
+    {:else if page === 'rates'}
+      <Rates data={ready ? $snapshot.rates : null} audit={$snapshot?.audit} />
+    {:else if page === 'parameters'}
+      <Parameters data={ready ? $snapshot.parameters : null} audit={$snapshot?.audit} />
+    {:else if page === 'firmware'}
+      <Firmware rows={ready ? $snapshot.firmware : null} />
+    {:else if page === 'test_bench'}
+      <TestBench data={ready ? $snapshot.test_bench : null} />
     {/if}
   </section>
 </main>

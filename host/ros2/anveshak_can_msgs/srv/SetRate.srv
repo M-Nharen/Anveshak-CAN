@@ -1,0 +1,14 @@
+# Rates page: change a periodic message's rate. Host-sent rates (cycle_hz, host_hb_hz) are
+# gateway settings, applied directly; node-sent rates (rate_fb_hz, rate_telem_hz, rate_hb_hz) go
+# through SERVICE SET on the given node (index/value_raw, same wire units as ParamSet).
+uint8 TARGET_CYCLE = 0
+uint8 TARGET_HOST_HB = 1
+uint8 TARGET_NODE_PARAM = 2
+uint8 target
+float64 hz            # TARGET_CYCLE / TARGET_HOST_HB
+uint8 node_id         # TARGET_NODE_PARAM
+uint16 index          # TARGET_NODE_PARAM
+uint32 value_raw      # TARGET_NODE_PARAM
+---
+bool success
+string message

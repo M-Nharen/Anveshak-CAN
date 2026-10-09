@@ -1,0 +1,9 @@
+# Take or release manual control of this gateway's drive targets (docs/architecture.md "Who is
+# in control"). While held by someone, /cmd_vel (autonomy) is ignored; /cmd/drive (the manual/
+# teleop channel) always goes through. Only one holder at a time; release with the same holder id.
+string holder   # caller-chosen id, e.g. "dashboard" or "teleop"; required
+bool release    # false = take, true = release
+---
+bool success
+string message
+bool holding    # true if `holder` holds control after this call

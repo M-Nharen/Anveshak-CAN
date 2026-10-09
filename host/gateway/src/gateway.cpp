@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <ctime>
 #include <type_traits>
@@ -54,6 +55,7 @@ const char* cmd_result_name(CmdResult r) {
     case CmdResult::EstopLatched: return "E-stop is latched";
     case CmdResult::BadArgument: return "bad argument";
     case CmdResult::SendFailed: return "CAN send failed";
+    case CmdResult::Timeout: return "no response from the node";
   }
   return "?";
 }
@@ -220,6 +222,13 @@ void Gateway::handle_frame(const CanFrame& f) {
             e.time_ns = d.rx_ns;
             e.node_id = m.master_node_id;
             events.push_back(e);
+          } else if constexpr (std::is_same_v<T, ServiceMsg>) {
+            // Only responses addressed to this host matter; a request (or a response to some
+            // other host) is just traffic the registry already counted above.
+            if (m.is_response && m.host == cfg_.host_id) {
+              service_responses_[m.transaction_id] = m;
+              service_cv_.notify_all();
+            }
           }
         },
         d.msg);
@@ -239,7 +248,6 @@ void Gateway::control_loop() {
   int64_t last_hb_ns = 0;
   int64_t stats_ns = next_ns;
   uint64_t stats_rx = rx_frames_.load();
-  uint64_t tick = 0;
 
   while (running_.load()) {
     next_ns += kSchedulerTickNs;
@@ -247,7 +255,6 @@ void Gateway::control_loop() {
     if (!running_.load()) break;
     const int64_t now = mono_ns();
     const int64_t lateness = now - next_ns;
-    ++tick;
     if (lateness > kSchedulerTickNs) next_ns = now;  // fell a whole tick behind: resync, don't burst
 
     std::vector<GatewayEvent> events;
@@ -267,10 +274,11 @@ void Gateway::control_loop() {
         stats_ns = now;
       }
 
-      // HOST_HB every 50 ms, and immediately after a claim or step-down (a claim must be
-      // announced within 50 ms; waiting for the next slot could come close to that).
+      // HOST_HB at host_hb_period_ns_ (20 Hz by default; a gateway setting, Rates page), and
+      // immediately after a claim or step-down (a claim must be announced within 50 ms; waiting
+      // for the next slot could come close to that).
       const bool urgent = election_.take_hb_urgent();
-      if (urgent || now - last_hb_ns >= kHostHbPeriodNs - kSchedulerTickNs / 2) {
+      if (urgent || now - last_hb_ns >= host_hb_period_ns_ - kSchedulerTickNs / 2) {
         HostHbMsg hb;
         hb.host_node = cfg_.host_id;
         hb.role = static_cast<uint8_t>(election_.role());
@@ -283,8 +291,10 @@ void Gateway::control_loop() {
         last_hb_ns = now;
       }
 
-      // The 20 ms cycle (every second tick): only the master transmits it.
-      if (tick % 2 == 0 && election_.is_master()) {
+      // The control cycle (SYNC + DRIVE_CMDs), at cycle_period_ns_ (50 Hz by default; a gateway
+      // setting, Rates page): only the master transmits it.
+      if (election_.is_master() && now - last_cycle_ns_ >= cycle_period_ns_ - kSchedulerTickNs / 2) {
+        last_cycle_ns_ = now;
         out.push_back(make_sync(cycle_counter_));
         for (uint8_t d = 1; d <= kNumDrives; ++d) {
           const TargetSlot& slot = targets_[d - 1];
@@ -420,6 +430,44 @@ CmdResult Gateway::request_lead(uint8_t host_id) {
   return ok ? CmdResult::Ok : CmdResult::SendFailed;
 }
 
+ServiceResult Gateway::service_request(uint8_t node_id, ServiceOpcode op, uint16_t param_index, uint32_t value_raw,
+                                        int timeout_ms) {
+  if (node_id < kNodeFirstDrive || node_id >= kNodeFirstDrive + kNumDrives) return {CmdResult::BadArgument, 0, 0};
+  uint8_t txn;
+  CanFrame f;
+  {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!running_.load()) return {CmdResult::NotRunning, 0, 0};
+    txn = ++service_txn_;
+    f = make_service_request(node_id, cfg_.host_id, static_cast<uint8_t>(op), txn, param_index, value_raw);
+  }
+  if (!send(f)) return {CmdResult::SendFailed, 0, 0};
+
+  std::unique_lock<std::mutex> lk(mu_);
+  const bool got = service_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
+                                         [&] { return service_responses_.count(txn) != 0; });
+  if (!got) return {CmdResult::Timeout, 0, 0};
+  const ServiceMsg resp = service_responses_[txn];
+  service_responses_.erase(txn);
+  return {CmdResult::Ok, resp.status, resp.value_raw};
+}
+
+CmdResult Gateway::set_cycle_rate_hz(double hz) {
+  if (!(hz >= 25.0 && hz <= 50.0)) return CmdResult::BadArgument;
+  std::lock_guard<std::mutex> lk(mu_);
+  if (!running_.load()) return CmdResult::NotRunning;
+  cycle_period_ns_ = static_cast<int64_t>(std::llround(static_cast<double>(kNsPerSec) / hz));
+  return CmdResult::Ok;
+}
+
+CmdResult Gateway::set_host_hb_rate_hz(double hz) {
+  if (!(hz >= 20.0 && hz <= 50.0)) return CmdResult::BadArgument;
+  std::lock_guard<std::mutex> lk(mu_);
+  if (!running_.load()) return CmdResult::NotRunning;
+  host_hb_period_ns_ = static_cast<int64_t>(std::llround(static_cast<double>(kNsPerSec) / hz));
+  return CmdResult::Ok;
+}
+
 GatewayState Gateway::state() const {
   GatewayState s;
   const int64_t now = mono_ns();
@@ -436,6 +484,8 @@ GatewayState Gateway::state() const {
     s.cycles_sent = cycles_sent_;
     s.late_cycles = late_cycles_;
     s.worst_lateness_ns = worst_lateness_ns_;
+    s.cycle_hz = static_cast<double>(kNsPerSec) / static_cast<double>(cycle_period_ns_);
+    s.host_hb_hz = static_cast<double>(kNsPerSec) / static_cast<double>(host_hb_period_ns_);
     for (uint8_t h = 1; h < s.peers.size(); ++h) s.peers[h] = election_.peer(h);
     s.bus.rx_fps = rx_fps_;
     s.nodes = registry_.snapshot(now);

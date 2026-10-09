@@ -17,6 +17,9 @@ CanFrame make_host_hb(const HostHbMsg& hb);
 CanFrame make_lead_request(const LeadRequestMsg& req);
 // msg.drive in 1-6; other values return an empty frame (id 0xFFFF).
 CanFrame make_drive_cmd(const DriveCmdMsg& cmd);
+// node_id 4-9 (drive); host 1 (Orin), 2 (RPi) or 3 (tool). Other values return an empty frame.
+CanFrame make_service_request(uint8_t node_id, uint8_t host, uint8_t opcode, uint8_t transaction_id,
+                               uint16_t param_index, uint32_t value_raw);
 
 // Packers for node-side frames, used by tests and by anything that simulates a node in C++.
 CanFrame make_node_hb(const NodeHbMsg& hb);  // node_id 4-9 (drive) or 20 (FPGA)

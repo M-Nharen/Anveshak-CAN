@@ -1,4 +1,5 @@
-# Stub: answered with success = false until the parameter service lands.
+# SERVICE SET on the given node (docs/architecture.md "Message catalog"); `save` also issues
+# SAVE afterwards, writing the new value to the node's flash.
 uint8 node_id
 uint16 index
 uint32 value_raw

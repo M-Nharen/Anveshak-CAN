@@ -95,6 +95,34 @@ def test_drive_messages_become_targets_and_stop_by_themselves():
         assert bridge.targets[-1][0]["a"] == 0.0
 
 
+def test_rates_and_parameters_pages_serialize_over_a_real_websocket():
+    client, _ = make_client()
+    with client as c, c.websocket_connect("/ws") as ws:
+        next_of(ws, "state")
+        send(ws, t="auth", token=login(c), req=0)
+        next_of(ws, "ack")
+
+        send(ws, t="page", page="rates")
+        state = next_of(ws, "state")
+        assert state["rates"]["guard_pct"] == 50.0
+        assert any(e["id"] == "cycle" for e in state["rates"]["entries"])
+
+        send(ws, t="select_param_node", node=4, req=1)
+        assert next_of(ws, "ack")["ok"] is True
+        send(ws, t="page", page="parameters")
+        state = next_of(ws, "state")
+        assert state["parameters"]["node_id"] == 4
+        assert len(state["parameters"]["params"]) == 14
+
+        send(ws, t="page", page="firmware")
+        state = next_of(ws, "state")
+        assert len(state["firmware"]) == 6  # the fake state's six drive nodes
+
+        send(ws, t="page", page="test_bench")
+        state = next_of(ws, "state")
+        assert len(state["test_bench"]["drives"]) == 6
+
+
 def test_static_frontend_is_served_after_the_api(tmp_path):
     (tmp_path / "index.html").write_text("<h1>dash</h1>")
     with make_client(static_dir=tmp_path)[0] as c:

@@ -27,7 +27,7 @@ def make_state(**over: Any) -> dict[str, Any]:
     st: dict[str, Any] = {
         "time_ns": 1, "host_id": 1, "role": 2, "role_name": "MASTER", "term": 3, "believed_master": 1,
         "leader_lost": False, "armed": False, "estop_latched": False, "cycles_sent": 100, "late_cycles": 2,
-        "worst_lateness_us": 300,
+        "worst_lateness_us": 300, "cycle_hz": 50.0, "host_hb_hz": 20.0,
         "bus": {"rx_frames": 1000, "tx_frames": 500, "tx_failures": 0, "error_frames": 0, "undecoded_frames": 0,
                 "bus_off": False, "rx_fps": 600.0},
         "peers": [{"host": h, "seen": h == 2, "role": 1, "term": 3} for h in (1, 2, 3)],
@@ -38,13 +38,21 @@ def make_state(**over: Any) -> dict[str, Any]:
 
 
 class FakeBridge:
-    """Records calls; `state_value` is what state() returns (None = gateway unreachable)."""
+    """Records calls; `state_value` is what state() returns (None = gateway unreachable).
+
+    `params` is {node: {index: value_raw}} and is both the GET backing store and what SET
+    writes to, so tests can see a value round-trip without a real node. `refuse_param_set`,
+    when set, makes the next set_param on a matching (node, index) answer status 3 (not
+    allowed while armed) instead of writing through -- see test_hub's armed-parameter tests.
+    """
 
     def __init__(self, state: dict[str, Any] | None = None) -> None:
         self.state_value = make_state() if state is None else state
         self.calls: list[tuple[str, Any]] = []
         self.targets: list[list[dict[str, float]]] = []
         self.fail = False
+        self.params: dict[int, dict[int, int]] = {}
+        self.refuse_param_set: set[tuple[int, int]] = set()
 
     async def state(self) -> dict[str, Any]:
         if self.fail or self.state_value is None:
@@ -75,6 +83,43 @@ class FakeBridge:
 
     async def request_lead(self, host: int) -> dict[str, Any]:
         return await self._cmd("request_lead", host)
+
+    async def get_param(self, node: int, index: int) -> dict[str, Any]:
+        self.calls.append(("get_param", (node, index)))
+        if self.fail:
+            raise BridgeError("down")
+        value = self.params.get(node, {}).get(index, 0)
+        return {"ok": True, "result": "ok", "status": 0, "value_raw": value}
+
+    async def set_param(self, node: int, index: int, value_raw: int) -> dict[str, Any]:
+        self.calls.append(("set_param", (node, index, value_raw)))
+        if self.fail:
+            raise BridgeError("down")
+        if (node, index) in self.refuse_param_set:
+            return {"ok": False, "result": "ok", "status": 3, "value_raw": 0}
+        self.params.setdefault(node, {})[index] = value_raw
+        return {"ok": True, "result": "ok", "status": 0, "value_raw": value_raw}
+
+    async def save_param(self, node: int, index: int) -> dict[str, Any]:
+        return await self._cmd("save_param", (node, index))
+
+    async def restore_param(self, node: int, index: int) -> dict[str, Any]:
+        self.calls.append(("restore_param", (node, index)))
+        if self.fail:
+            raise BridgeError("down")
+        return {"ok": True, "result": "ok", "status": 0, "value_raw": 0}
+
+    async def set_host_rate(
+        self, cycle_hz: float | None = None, host_hb_hz: float | None = None
+    ) -> dict[str, Any]:
+        self.calls.append(("set_host_rate", (cycle_hz, host_hb_hz)))
+        if self.fail:
+            raise BridgeError("down")
+        if cycle_hz is not None:
+            self.state_value["cycle_hz"] = cycle_hz
+        if host_hb_hz is not None:
+            self.state_value["host_hb_hz"] = host_hb_hz
+        return {"ok": True, "result": "ok"}
 
     async def close(self) -> None:
         pass

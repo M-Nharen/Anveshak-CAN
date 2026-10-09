@@ -60,7 +60,9 @@ gw.request_lead(2);                       // LEAD_REQUEST on the bus (and applie
 gw.set_targets({...}); gw.set_wheel_target(3, {...});   // held 100 ms, then zero speed
 gw.arm(); gw.disarm();                    // master only
 gw.estop(); gw.release_estop();           // E-stop from any role; release is master only
-GatewayState s = gw.state();              // role, term, nodes, rates, bus stats, late cycles
+gw.service_request(4, ServiceOpcode::Get, index);     // SERVICE on a drive node; blocks for the response
+gw.set_cycle_rate_hz(50); gw.set_host_hb_rate_hz(20);  // host rates (Rates page); floors enforced
+GatewayState s = gw.state();              // role, term, nodes, rates, bus stats, late cycles, cycle_hz/host_hb_hz
 int id = gw.subscribe([](const GatewayEvent& e) { ... });
 ```
 
@@ -101,6 +103,8 @@ the gateway's own threads: keep them short.
 
 With `bridge_socket` set, the executable serves a Unix socket (mode 0660) carrying one JSON object
 per line, one reply line per request: `state`, `set_targets` (6 wheels), `arm`, `disarm`, `estop`,
-`release_estop`, `request_lead`, `ping`. It only wraps the public `Gateway` API, so master-only
-rules, the E-stop latch and the 100 ms target hold stay in the gateway. The dashboard backend
-(`dashboard/backend`) is its client; the format is documented at the top of `bridge.hpp`.
+`release_estop`, `request_lead`, `get_param`/`set_param`/`save_param`/`restore_param` (SERVICE on a
+drive node, raw wire bits in/out; B5's Parameters and Rates pages), `set_host_rate` (`cycle_hz`
+and/or `host_hb_hz`; B5's Rates page), `ping`. It only wraps the public `Gateway` API, so
+master-only rules, the E-stop latch and the 100 ms target hold stay in the gateway. The dashboard
+backend (`dashboard/backend`) is its client; the format is documented at the top of `bridge.hpp`.

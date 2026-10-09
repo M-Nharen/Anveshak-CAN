@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from anv_can_defs.params_drive import PARAMS_DRIVE
+
+from . import rates as rates_mod
+from .paramcodec import to_physical
 from .settings import Settings
+from .testbench import StepTest
 
 ROLE_MASTER = 2
 NODE_STATES = {
@@ -167,6 +172,97 @@ def nodes_view(st: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def rates_view(entries: list[rates_mod.RateEntry], guard_pct: float) -> dict[str, Any]:
+    return {
+        "guard_pct": guard_pct,
+        "entries": [
+            {
+                "id": e.id,
+                "label": e.label,
+                "source": e.source,
+                "node_id": e.node_id,
+                "hz": round(e.hz, 3),
+                "floor_hz": e.floor_hz,
+                "ceil_hz": e.ceil_hz,
+            }
+            for e in entries
+        ],
+    }
+
+
+def parameters_view(node_id: int | None, params: dict[int, int], armed: bool) -> dict[str, Any]:
+    rows = []
+    for info in sorted(PARAMS_DRIVE.values(), key=lambda p: p.index):
+        raw = params.get(info.index)
+        rows.append(
+            {
+                "index": info.index,
+                "name": info.name,
+                "type": info.type,
+                "unit": info.unit,
+                "description": info.description,
+                "minimum": info.minimum,
+                "maximum": info.maximum,
+                "default": info.default,
+                "disarmed_only": info.disarmed_only,
+                "locked": info.disarmed_only and armed,
+                "value": None if raw is None else round(to_physical(info.type, raw), 6),
+                "known": raw is not None,
+            }
+        )
+    return {"node_id": node_id, "params": rows}
+
+
+def firmware_view(st: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per node build ID, with mismatches flagged within each node type."""
+    by_type: dict[int, set[int]] = {}
+    for n in st["nodes"]:
+        if n["has_hb"]:
+            by_type.setdefault(n["node_type"], set()).add(n["fw_build_id"])
+    rows = []
+    for n in st["nodes"]:
+        builds = by_type.get(n["node_type"], set())
+        rows.append(
+            {
+                "node_id": n["node_id"],
+                "name": n["name"],
+                "alive": n["alive"],
+                "fw_build_id": n["fw_build_id"] if n["has_hb"] else None,
+                "mismatch": n["has_hb"] and len(builds) > 1,
+            }
+        )
+    return rows
+
+
+def test_bench_view(st: dict[str, Any], jog_drive: int | None, step: StepTest | None) -> dict[str, Any]:
+    by_id = {n["node_id"]: n for n in st["nodes"]}
+    drives = []
+    for i in range(6):
+        node = by_id.get(4 + i, {})
+        fb = node.get("fb")
+        drives.append(
+            {
+                "drive": i + 1,
+                "alive": bool(node.get("alive")),
+                "state": NODE_STATES.get(node.get("state", -1), "—"),
+                "measured_a": None if fb is None else fb["speed_a"],
+            }
+        )
+    return {
+        "drives": drives,
+        "jog_drive": jog_drive,
+        "step": None
+        if step is None
+        else {
+            "drive": step.drive,
+            "amplitude": step.amplitude,
+            "duration_s": step.duration_s,
+            "running": True,  # caller clears `step` once done; see Hub.test_bench_poll_once
+            "samples": step.samples,
+        },
+    }
 
 
 def drive_view(st: dict[str, Any], targets: list[float]) -> list[dict[str, Any]]:
