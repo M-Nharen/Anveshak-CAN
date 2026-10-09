@@ -7,6 +7,10 @@ add_library(drive_app STATIC
 target_include_directories(drive_app PUBLIC app include)
 target_link_libraries(drive_app PUBLIC anveshak_can_core)
 
+# Black-box log storage in reserved flash (slot ring). Plain C, so it is unit-tested on the host.
+add_library(drive_log_flash STATIC src/board_log_flash.c)
+target_include_directories(drive_log_flash PUBLIC src)
+
 if(NOT CMAKE_CROSSCOMPILING)
   add_executable(test_drive_motor tests/test_drive_motor.c)
   target_link_libraries(test_drive_motor PRIVATE drive_app)
@@ -17,6 +21,11 @@ if(NOT CMAKE_CROSSCOMPILING)
   target_link_libraries(test_drive_app PRIVATE drive_app acc_can_loopback)
   target_include_directories(test_drive_app PRIVATE ${CMAKE_SOURCE_DIR}/tests)
   add_test(NAME test_drive_app COMMAND test_drive_app)
+
+  add_executable(test_board_log_flash tests/test_board_log_flash.c)
+  target_link_libraries(test_board_log_flash PRIVATE drive_log_flash)
+  target_include_directories(test_board_log_flash PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+  add_test(NAME test_board_log_flash COMMAND test_board_log_flash)
 endif()
 
 # Board targets: each proves one CAN peripheral family compiles for one real part
@@ -30,18 +39,20 @@ if(ANV_BUILD_DRIVE_STM32_F446)
   add_library(drive_stm32_f446 STATIC
     src/main_f446.c
     src/board_hw_f446.c
+    src/board_crash.c
   )
   target_include_directories(drive_stm32_f446 PRIVATE boards/f446)
   target_compile_definitions(drive_stm32_f446 PRIVATE DRIVE_BOARD_F446)
-  target_link_libraries(drive_stm32_f446 PRIVATE drive_app acc_can_bxcan)
+  target_link_libraries(drive_stm32_f446 PRIVATE drive_app drive_log_flash acc_can_bxcan)
 endif()
 
 if(ANV_BUILD_DRIVE_STM32_G431)
   add_library(drive_stm32_g431 STATIC
     src/main_g431.c
     src/board_hw_g431.c
+    src/board_crash.c
   )
   target_include_directories(drive_stm32_g431 PRIVATE boards/g431)
   target_compile_definitions(drive_stm32_g431 PRIVATE DRIVE_BOARD_G431)
-  target_link_libraries(drive_stm32_g431 PRIVATE drive_app acc_can_fdcan)
+  target_link_libraries(drive_stm32_g431 PRIVATE drive_app drive_log_flash acc_can_fdcan)
 endif()

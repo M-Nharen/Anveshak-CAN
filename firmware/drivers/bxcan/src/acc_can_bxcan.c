@@ -191,5 +191,25 @@ void acc_can_bxcan_isr_rx_fifo0(acc_can_bxcan_ctx_t *ctx)
 
 void acc_can_bxcan_isr_error(acc_can_bxcan_ctx_t *ctx)
 {
+    /* HAL has already read ESR.LEC into its error code (and cleared LEC) by the time the error
+     * callback runs, so count from there: one count per error interrupt, by type. */
+    uint32_t e = HAL_CAN_GetError(ctx->hcan);
+    uint32_t *counts = ctx->error_state.error_type_counts;
+    if ((e & HAL_CAN_ERROR_STF) != 0u) {
+        counts[ACC_CAN_ERRTYPE_STUFF]++;
+    }
+    if ((e & HAL_CAN_ERROR_FOR) != 0u) {
+        counts[ACC_CAN_ERRTYPE_FORM]++;
+    }
+    if ((e & HAL_CAN_ERROR_ACK) != 0u) {
+        counts[ACC_CAN_ERRTYPE_ACK]++;
+    }
+    if ((e & (HAL_CAN_ERROR_BR | HAL_CAN_ERROR_BD)) != 0u) {
+        counts[ACC_CAN_ERRTYPE_BIT]++;
+    }
+    if ((e & HAL_CAN_ERROR_CRC) != 0u) {
+        counts[ACC_CAN_ERRTYPE_CRC]++;
+    }
+    (void)HAL_CAN_ResetError(ctx->hcan);
     refresh_error_state(ctx);
 }

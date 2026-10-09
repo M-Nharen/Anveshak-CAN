@@ -75,4 +75,10 @@
  * clock is approximate, so this is deliberately short of the ~50 ms budget. */
 #define DRIVE_IWDG_TIMEOUT_MS 40u
 
+/* Black-box log (anv_diag.h): the last 16 KB (8 pages of 2 KB) of the 128 KB flash, used as a
+ * ring of 512-byte slots so it is erased only once per 32 saves (board_log_flash.h). Keep this
+ * clear of the bootloader and application image when the linker script is written. */
+#define DRIVE_LOG_FLASH_BASE 0x0801C000u
+#define DRIVE_LOG_FLASH_SIZE (16u * 1024u)
+
 #endif /* DRIVE_BOARD_CONFIG_G431_H */

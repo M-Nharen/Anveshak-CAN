@@ -38,11 +38,25 @@ typedef enum {
     ACC_CAN_BUS_OFF = 2,
 } acc_can_bus_state_t;
 
+/* Kinds of bus error a controller can report (bxCAN LEC, FDCAN PSR.LEC, TWAI alerts), so the
+ * node can tell the operator *what* went wrong, not only how many. Backends that cannot tell
+ * count everything under OTHER. docs/architecture.md, "Decoding CAN bus errors". */
+typedef enum {
+    ACC_CAN_ERRTYPE_STUFF = 0,
+    ACC_CAN_ERRTYPE_FORM = 1,
+    ACC_CAN_ERRTYPE_ACK = 2,
+    ACC_CAN_ERRTYPE_BIT = 3, /* bit recessive or dominant */
+    ACC_CAN_ERRTYPE_CRC = 4,
+    ACC_CAN_ERRTYPE_OTHER = 5,
+    ACC_CAN_ERRTYPE_COUNT = 6,
+} acc_can_error_type_t;
+
 typedef struct {
     uint8_t tec;
     uint8_t rec;
     acc_can_bus_state_t state;
     uint32_t bus_off_count;
+    uint32_t error_type_counts[ACC_CAN_ERRTYPE_COUNT]; /* cumulative since the driver started */
 } acc_can_error_state_t;
 
 typedef enum {

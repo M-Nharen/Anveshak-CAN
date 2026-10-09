@@ -125,3 +125,15 @@ board enables a HAL module this template doesn't (e.g. a second UART for a debug
   is chosen.
 - Bootloader entry, OTA and debug levels are out of scope for this prompt
   (`board->enter_bootloader`/`request_reset` are `NULL`).
+
+## Diagnostics (A4)
+
+* `src/board_crash.c`: the HardFault handler saves PC/LR/xPSR/CFSR/HFSR/MMFAR/BFAR to a `.noinit`
+  variable and resets; the next boot reports HARD_FAULT with those values. The linker script of
+  the real board project must leave `.noinit` alone (the ST scripts do).
+* `src/board_log_flash.c`: the black-box log lives in `DRIVE_LOG_FLASH_BASE/SIZE` (board_config),
+  as a ring of 512-byte slots so the region is erased rarely. Keep that region out of the
+  bootloader and application image.
+* The self-test only checks the node ID switch on this template; supply, driver-fault, encoder
+  and sensor checks are stubs until the board wires them.
+* G4 reports brown-out as power-on (its reset flags can't tell them apart).

@@ -43,8 +43,13 @@ typedef struct {
     const drive_telem_hw_t *telem_hw;
 
     anv_rate_sched_t telem_sched;
-    uint8_t last_telem_rate_hz;
+    uint8_t last_telem_rate_hz; /* effective rate: parameter, or 1 Hz at debug level 0 */
     uint8_t last_hb_rate_hz;
+
+    anv_rate_sched_t debug_sched; /* DRIVE_DEBUG_A/B: 10 Hz at debug level 2, 50 Hz at 3, off below */
+    uint32_t last_debug_rate_hz;
+    uint32_t sync_count;          /* SYNCs since the last DRIVE_FB (rate_fb_hz divides the 50 Hz cycle) */
+    uint32_t last_now_ms;         /* most recent time seen, for events raised from motor_step() */
 } drive_app_t;
 
 /* Converts the generated ROVER_PARAMS_DRIVE_TABLE into the core's generic descriptor shape
@@ -68,8 +73,8 @@ void drive_app_on_rx_frame(drive_app_t *app, const acc_can_frame_t *frame, uint3
  * so it keeps building and testing on the host). */
 void drive_app_motor_step(drive_app_t *app, uint32_t dt_ms);
 
-/* Call once per main-loop iteration: runs anv_node_tick() (watchdogs, bus-off, NODE_HB) and
- * sends DRIVE_TELEM_0/_1 when due. */
+/* Call once per main-loop iteration: runs anv_node_tick() (watchdogs, bus-off, NODE_HB, events)
+ * and sends DRIVE_TELEM_0/_1 and, at debug level 2+, DRIVE_DEBUG_A/_B when due. */
 void drive_app_tick(drive_app_t *app, uint32_t now_ms);
 
 #ifdef __cplusplus

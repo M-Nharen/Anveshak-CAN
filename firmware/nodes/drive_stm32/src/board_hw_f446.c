@@ -1,6 +1,11 @@
 #include "board_hw_f446.h"
 
+#include <string.h>
+
 #include "board_config.h"
+#include "board_crash.h"
+#include "board_log_flash.h"
+#include "ids.h"
 
 CAN_HandleTypeDef hcan1;
 
@@ -54,6 +59,73 @@ static uint32_t board_now_ms(void *ctx)
 {
     (void)ctx;
     return HAL_GetTick();
+}
+
+
+/* ---- diagnostics hooks: black-box flash log, crash record, reset cause, self-test ----------- */
+
+static int log_erase(void *ctx)
+{
+    (void)ctx;
+    FLASH_EraseInitTypeDef erase = {0};
+    uint32_t sector_error = 0u;
+    erase.TypeErase = FLASH_TYPEERASE_SECTORS;
+    erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+    erase.Sector = DRIVE_LOG_FLASH_SECTOR;
+    erase.NbSectors = 1u;
+    (void)HAL_FLASH_Unlock();
+    HAL_StatusTypeDef st = HAL_FLASHEx_Erase(&erase, &sector_error);
+    (void)HAL_FLASH_Lock();
+    return st == HAL_OK ? 0 : -1;
+}
+
+static int log_program(void *ctx, uint32_t offset, const uint8_t *data, size_t len)
+{
+    (void)ctx;
+    int rc = 0;
+    (void)HAL_FLASH_Unlock();
+    for (size_t i = 0; i < len && rc == 0; i += 4u) {
+        uint32_t word;
+        memcpy(&word, data + i, sizeof(word));
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DRIVE_LOG_FLASH_BASE + offset + (uint32_t)i, word) != HAL_OK) {
+            rc = -1;
+        }
+    }
+    (void)HAL_FLASH_Lock();
+    return rc;
+}
+
+static board_log_flash_t s_log_flash = {
+    .mem = (const uint8_t *)DRIVE_LOG_FLASH_BASE,
+    .size = DRIVE_LOG_FLASH_SIZE,
+    .ctx = NULL,
+    .erase = log_erase,
+    .program = log_program,
+};
+
+static int board_log_load(void *ctx, uint8_t *data, size_t len)
+{
+    (void)ctx;
+    return board_log_flash_load(&s_log_flash, data, len);
+}
+
+static int board_log_save(void *ctx, const uint8_t *data, size_t len)
+{
+    (void)ctx;
+    return board_log_flash_save(&s_log_flash, data, len);
+}
+
+/* Power-on self-test (bit n = test n+1, see anv_board.h). Only the node ID switch can be checked
+ * on this template: the supply, driver-fault, encoder and sensor readings are stubs here (see
+ * telem_supply_mv), so those tests report "passed" until a real board wires them. */
+static uint32_t board_self_test(void *ctx)
+{
+    uint32_t failed = 0u;
+    uint8_t id = board_read_node_id(ctx);
+    if (id < ROVER_NODE_DRIVE1 || id > ROVER_NODE_DRIVE6) {
+        failed |= (1u << 5);
+    }
+    return failed;
 }
 
 static anv_board_hooks_t s_board_hooks;
@@ -312,6 +384,7 @@ static void iwdg_init(void)
 
 void board_hw_init(void)
 {
+    board_crash_init(); /* first: read the reset flags before anything else can reset the chip */
     s_board_hooks.ctx = NULL;
     s_board_hooks.read_node_id = board_read_node_id;
     s_board_hooks.set_outputs_off = board_set_outputs_off;
@@ -321,6 +394,11 @@ void board_hw_init(void)
     s_board_hooks.request_reset = NULL;
     s_board_hooks.storage_load = NULL; /* flash-backed parameter storage: left for a later prompt */
     s_board_hooks.storage_save = NULL;
+    s_board_hooks.log_load = board_log_load;
+    s_board_hooks.log_save = board_log_save;
+    s_board_hooks.take_crash_record = board_crash_take;
+    s_board_hooks.reset_cause = board_crash_reset_cause;
+    s_board_hooks.self_test = board_self_test;
 
     s_motor_hw.ctx = NULL;
     s_motor_hw.set_duty = motor_set_duty;

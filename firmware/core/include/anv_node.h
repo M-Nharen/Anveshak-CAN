@@ -14,6 +14,8 @@
 #include "acc_can.h"
 #include "anv_board.h"
 #include "anv_cmdwatch.h"
+#include "anv_debug.h"
+#include "anv_diag.h"
 #include "anv_estop.h"
 #include "anv_heartbeat.h"
 #include "anv_master.h"
@@ -53,6 +55,18 @@ typedef struct {
     uint32_t boot_ms;
     bool fault_active;
     acc_can_error_state_t last_error_state;
+
+    /* Diagnostics: off until the application calls anv_node_diag_start(), so a node that has not
+     * opted in sends no NODE_EVENT frames and reports debug level 0. */
+    bool diag_on;
+    anv_diag_t diag;
+    anv_debug_t debug;
+    anv_crash_record_t crash;
+    bool crash_valid;
+    uint8_t reset_cause;
+    uint32_t self_test_failed;
+    uint8_t prev_can_state;
+    uint32_t prev_ack_errors;
 } anv_node_t;
 
 /* `txq_storage` must have room for ACC_CAN_PRIO_COUNT * txq_capacity_per_prio frames.
@@ -62,6 +76,19 @@ void anv_node_init(anv_node_t *node, uint8_t node_id, uint8_t node_type, uint8_t
                     const acc_can_driver_t *driver, acc_can_frame_t *txq_storage, size_t txq_capacity_per_prio,
                     anv_param_store_t *params, const anv_node_info_t *info, const anv_board_hooks_t *board,
                     uint32_t now_ms);
+
+/* Boot-time diagnostics; call after anv_node_init() and loading parameters, before
+ * anv_node_boot_complete(). Loads the flash log and bumps the boot count, turns the last
+ * reset cause and any saved crash record into events, and runs the board self-test (a failure
+ * raises SELF_TEST_FAIL and puts the node in FAULT). `debug_default` is the debug_default
+ * parameter. Returns the self-test failure bitmask (0 = passed). */
+uint32_t anv_node_diag_start(anv_node_t *node, uint8_t debug_default, uint32_t now_ms);
+
+/* Reports an application-detected condition (OVERCURRENT_A, ...) or clears it. No-ops until
+ * anv_node_diag_start() has run. See anv_diag.h. */
+void anv_node_raise(anv_node_t *node, uint16_t code, uint16_t detail, uint32_t now_ms);
+void anv_node_lower(anv_node_t *node, uint16_t code, uint16_t detail, uint32_t now_ms);
+void anv_node_event(anv_node_t *node, uint16_t code, uint16_t detail, uint32_t now_ms);
 
 /* Call once self-test has passed: BOOT -> DISARMED. */
 void anv_node_boot_complete(anv_node_t *node);

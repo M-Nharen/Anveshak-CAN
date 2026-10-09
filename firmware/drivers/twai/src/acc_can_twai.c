@@ -93,6 +93,7 @@ static int twai_drv_init(void *vctx, uint32_t bitrate_bps, const acc_can_filter_
 
     anv_frame_ring_init(&ctx->rx_ring, ctx->rx_storage, ACC_CAN_TWAI_RX_CAPACITY);
     memset(&ctx->error_state, 0, sizeof(ctx->error_state));
+    ctx->last_bus_error_count = 0u;
 
     /* RX task pinned to core 1, Wi-Fi/Bluetooth left on core 0 (docs/architecture.md). */
     BaseType_t created = xTaskCreatePinnedToCore(rx_task_fn, "acc_can_twai_rx", ACC_CAN_TWAI_RX_TASK_STACK_WORDS, ctx,
@@ -143,6 +144,12 @@ static int twai_drv_get_error_state(void *vctx, acc_can_error_state_t *state)
     }
 
     bool was_bus_off = (ctx->error_state.state == ACC_CAN_BUS_OFF);
+
+    /* TWAI reports only a running total of bus errors, not their type, so they all land in
+     * OTHER. (Per-type counts would need the alert interrupt and register access.) */
+    ctx->error_state.error_type_counts[ACC_CAN_ERRTYPE_OTHER] += status.bus_error_count - ctx->last_bus_error_count;
+    ctx->last_bus_error_count = status.bus_error_count;
+
     ctx->error_state.tec = (uint8_t)(status.tx_error_counter > 255u ? 255u : status.tx_error_counter);
     ctx->error_state.rec = (uint8_t)(status.rx_error_counter > 255u ? 255u : status.rx_error_counter);
 

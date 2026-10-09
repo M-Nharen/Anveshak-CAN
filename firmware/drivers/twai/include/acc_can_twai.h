@@ -40,6 +40,7 @@ typedef struct {
     anv_frame_ring_t rx_ring;
     acc_can_frame_t rx_storage[ACC_CAN_TWAI_RX_CAPACITY];
     acc_can_error_state_t error_state;
+    uint32_t last_bus_error_count; /* twai_status_info_t.bus_error_count at the previous read */
     TaskHandle_t rx_task;
 } acc_can_twai_ctx_t;
 
