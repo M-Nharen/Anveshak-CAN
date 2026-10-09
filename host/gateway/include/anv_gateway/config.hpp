@@ -13,6 +13,7 @@ struct GatewayConfig {
   uint8_t tie_break = 0;    // 0 = use host_id (Orin 1, RPi 2)
   bool auto_takeover = false;
   int rt_priority = 50;     // SCHED_FIFO priority for the CAN threads; 0 = leave scheduling alone
+  std::string bridge_socket;  // Unix socket for the dashboard backend; empty = no bridge
   int cpu_affinity = -1;    // pin the CAN threads to this core (RPi); -1 = no pinning
 
   uint8_t effective_tie_break() const { return tie_break != 0 ? tie_break : host_id; }

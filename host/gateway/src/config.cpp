@@ -61,6 +61,8 @@ bool parse_config_text(const std::string& text, GatewayConfig& out, std::string*
     if (key == "interface") {
       if (value.empty()) return fail(error, line_no, "interface must not be empty");
       cfg.interface_name = value;
+    } else if (key == "bridge_socket") {
+      cfg.bridge_socket = value;  // empty value = off
     } else if (key == "host_id") {
       if (!parse_int(value, n) || (n != 1 && n != 2)) return fail(error, line_no, "host_id must be 1 (Orin) or 2 (RPi)");
       cfg.host_id = static_cast<uint8_t>(n);
