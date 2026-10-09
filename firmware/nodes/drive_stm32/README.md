@@ -34,7 +34,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-### Cross-compiling a board variant (compile-only proof)
+### Cross-compiling a board variant
 
 Both `src/main_f446.c`/`src/main_g431.c` and the `acc_can_bxcan`/`acc_can_fdcan` drivers need
 the real ST CMSIS device headers and HAL driver headers on the include path. CI fetches just
@@ -70,25 +70,32 @@ For the G431 (FDCAN) build, swap in `cmsis_device_g4`/`stm32g4xx_hal_driver`, th
 `ANV_STM32_FDCAN_CONF_DIR`, and `-DANV_BUILD_DRIVE_STM32_G431=ON`. `.github/workflows/ci.yml`
 runs both exactly this way.
 
-Both board targets (`drive_stm32_f446`, `drive_stm32_g431`) build as **static libraries, not
-linked firmware images** — like `firmware/cmake/arm-none-eabi.cmake` for the core library,
-there is no startup code, vector table or linker script here, so `main()` proves the wiring
-compiles but is never actually executed by this build. Getting a flashable `.bin` means
-dropping this code into a real board project (CubeIDE, or a Makefile project with ST's
-startup file and a linker script for the chosen part) that supplies those three things and
-links against `drive_app`, `acc_can_bxcan`/`acc_can_fdcan`, and `anveshak_can_core`.
+The board targets (`drive_stm32_f446`, `drive_stm32_g431`) are static libraries; the same
+build then links each into a flashable image that runs behind the CAN bootloader
+(`image.cmake`, `ld/drive_app_*.ld`, ST's startup and system files, `src/app_image.c`) and
+stamps its header:
 
-## Flashing with an ST-Link
+| Output (in `build-*/nodes/drive_stm32/`) | What |
+| --- | --- |
+| `drive_app_<board>.elf` | Linked application, at 0x0801_0000 (F446) / 0x0800_9000 (G431) |
+| `drive_app_<board>.bin` | Stamped image for `anv-flash` (header slot + application) |
 
-Once wired into a real board project as above:
+The bootloader itself (`firmware/bootloader_stm32/`) builds alongside, from the same
+`board_config_*.h`, as `build-*/bootloader_stm32/anv_bootloader_<board>.bin`.
 
-1. Connect an ST-Link (or a Nucleo board's on-board ST-Link) to the target's SWD header
-   (SWCLK, SWDIO, GND, and 3.3V if the ST-Link is powering the board).
-2. Build the real project's `.elf`/`.bin` (CubeIDE's build, or `arm-none-eabi-gcc` +
-   `arm-none-eabi-objcopy -O binary`).
-3. Flash with `st-flash write drive.bin 0x08000000` (stlink-tools), or CubeIDE's built-in
-   flash/debug, or STM32CubeProgrammer.
-4. Set the node ID switch (five pins, `DRIVE_NODE_ID_PIN0`-`DRIVE_NODE_ID_PIN4` in the
+## Flashing
+
+Normally over CAN: `anv-flash --host orin flash --node 4 drive_app_g431.bin`
+(`host/tools/anv_flash/README.md`). The application handles NMT ENTER_BOOTLOADER (only while
+DISARMED) by setting the bootloader's stay flag and resetting.
+
+First time only, over SWD (ST-Link or a Nucleo's on-board one, on SWCLK/SWDIO/GND):
+
+1. Flash the bootloader at 0x0800_0000 and write-protect it
+   (`firmware/bootloader_stm32/README.md`, "First-time programming").
+2. Either flash `drive_app_<board>.bin` at 0x0801_0000 (F446) / 0x0800_9000 (G431) with
+   `st-flash write`, or let the bootloader wait and use `anv-flash`.
+3. Set the node ID switch (five pins, `DRIVE_NODE_ID_PIN0`-`DRIVE_NODE_ID_PIN4` in the
    board's `board_config_*.h`) before powering on; the ID is read once at boot.
 
 ## Pins to set in `board_config_*.h`
@@ -123,5 +130,4 @@ board enables a HAL module this template doesn't (e.g. a second UART for a debug
 - `SystemClock_Config()` in each `main_*.c` is a minimal placeholder; the real PLL
   configuration depends on the final board's crystal and is a CubeMX job once the exact part
   is chosen.
-- Bootloader entry, OTA and debug levels are out of scope for this prompt
-  (`board->enter_bootloader`/`request_reset` are `NULL`).
+- OTA (ESP32-S3) and debug levels are out of scope for this prompt.
