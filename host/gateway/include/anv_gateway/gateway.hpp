@@ -9,8 +9,10 @@
 
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -21,13 +23,22 @@
 #include "anv_gateway/config.hpp"
 #include "anv_gateway/events.hpp"
 #include "anv_gateway/leadership.hpp"
+#include "anv_gateway/messages.hpp"
 #include "anv_gateway/node_registry.hpp"
 #include "anv_gateway/protocol.hpp"
 
 namespace anv::gw {
 
-enum class CmdResult { Ok, NotRunning, NotMaster, EstopLatched, BadArgument, SendFailed };
+enum class CmdResult { Ok, NotRunning, NotMaster, EstopLatched, BadArgument, SendFailed, Timeout };
 const char* cmd_result_name(CmdResult r);
+
+// Result of a parameter SERVICE request (GET/SET/SAVE/RESTORE_DEFAULTS): `status`/`value_raw`
+// are only meaningful when `result == CmdResult::Ok` (a response came back from the node).
+struct ServiceResult {
+  CmdResult result = CmdResult::Ok;
+  uint8_t status = 0;
+  uint32_t value_raw = 0;
+};
 
 // Target for one drive node (two motor channels). Units: rad/s (or % duty in OpenLoopDuty mode).
 struct WheelTarget {
@@ -59,6 +70,8 @@ struct GatewayState {
   uint64_t cycles_sent = 0;
   uint64_t late_cycles = 0;       // cycles that started more than 2 ms after their deadline
   int64_t worst_lateness_ns = 0;
+  double cycle_hz = 50.0;         // control cycle (SYNC + DRIVE_CMD) rate: a gateway setting, 25-50 Hz
+  double host_hb_hz = 20.0;       // this host's HOST_HB rate: a gateway setting, >= 20 Hz
   std::array<PeerHost, 4> peers{};  // indexed by host node (1 Orin, 2 RPi, 3 tool)
   BusStats bus;
   std::vector<NodeInfo> nodes;
@@ -91,6 +104,18 @@ class Gateway {
   // --- Any role ---
   CmdResult estop();                       // ESTOP frame, latched until released
   CmdResult request_lead(uint8_t host_id); // LEAD_REQUEST for host 1 (Orin) or 2 (RPi)
+
+  // --- Parameters (SERVICE GET/SET/SAVE/RESTORE_DEFAULTS): node_id 4-9 (drive). Sends the
+  // request and blocks (up to timeout_ms) for the matching response; any host may call this
+  // (SERVICE is addressed per-host on the bus, not master-only). value_raw/the returned
+  // value_raw are raw wire bits, reinterpreted per the parameter's type (docs/architecture.md,
+  // defs/params/drive.yaml): the caller does that conversion, not the gateway.
+  ServiceResult service_request(uint8_t node_id, ServiceOpcode op, uint16_t param_index, uint32_t value_raw = 0,
+                                 int timeout_ms = 200);
+
+  // --- Host-sent rates (gateway settings; docs/architecture.md "Rates page" safety floors) ---
+  CmdResult set_cycle_rate_hz(double hz);    // control cycle (SYNC + DRIVE_CMD): 25-50 Hz
+  CmdResult set_host_hb_rate_hz(double hz);  // this host's HOST_HB: 20-50 Hz
 
   GatewayState state() const;
 
@@ -133,6 +158,15 @@ class Gateway {
   uint64_t late_cycles_ = 0;
   int64_t worst_lateness_ns_ = 0;
   double rx_fps_ = 0;
+  int64_t cycle_period_ns_ = kCyclePeriodNs;      // runtime copy of the (now adjustable) control cycle period
+  int64_t host_hb_period_ns_ = kHostHbPeriodNs;    // runtime copy of this host's HOST_HB period
+  int64_t last_cycle_ns_ = 0;                      // control thread only; read/written under mu_
+
+  // Pending SERVICE requests, by transaction id, filled in by handle_frame() on the RX thread
+  // and consumed by service_request() on whichever thread called it.
+  std::condition_variable service_cv_;
+  std::map<uint8_t, ServiceMsg> service_responses_;
+  uint8_t service_txn_ = 0;
 
   std::atomic<uint64_t> rx_frames_{0}, tx_frames_{0}, tx_failures_{0}, error_frames_{0}, undecoded_{0};
   std::atomic<bool> bus_off_{false};

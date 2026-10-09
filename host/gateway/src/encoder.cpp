@@ -135,6 +135,42 @@ CanFrame make_drive_cmd(const DriveCmdMsg& cmd) {
 #undef ANV_DRIVE_CMD
 }
 
+CanFrame make_service_request(uint8_t node_id, uint8_t host, uint8_t opcode, uint8_t transaction_id,
+                               uint16_t param_index, uint32_t value_raw) {
+  CanFrame f;
+#define ANV_SERVICE_REQ(N, HOST, NAME)                                                                        \
+  do {                                                                                                        \
+    struct rover_drive##N##_service_req_##NAME##_t s;                                                         \
+    rover_drive##N##_service_req_##NAME##_init(&s);                                                           \
+    s.opcode = opcode;                                                                                        \
+    s.transaction_id = transaction_id;                                                                        \
+    s.param_index = param_index;                                                                               \
+    s.value_raw = value_raw;                                                                                   \
+    ANV_PACK(f, ROVER_DRIVE##N##_SERVICE_REQ_##HOST##_FRAME_ID, ROVER_DRIVE##N##_SERVICE_REQ_##HOST##_LENGTH,  \
+             rover_drive##N##_service_req_##NAME##_pack, s);                                                   \
+    return f;                                                                                                  \
+  } while (0)
+#define ANV_SERVICE_REQ_DRIVE(N)              \
+  case N:                                     \
+    switch (host) {                          \
+      case 1: ANV_SERVICE_REQ(N, ORIN, orin); \
+      case 2: ANV_SERVICE_REQ(N, RPI, rpi);   \
+      case 3: ANV_SERVICE_REQ(N, TOOL, tool); \
+      default: return invalid_frame();        \
+    }
+  switch (node_id - 3) {  // node 4-9 -> drive 1-6
+    ANV_SERVICE_REQ_DRIVE(1)
+    ANV_SERVICE_REQ_DRIVE(2)
+    ANV_SERVICE_REQ_DRIVE(3)
+    ANV_SERVICE_REQ_DRIVE(4)
+    ANV_SERVICE_REQ_DRIVE(5)
+    ANV_SERVICE_REQ_DRIVE(6)
+    default: return invalid_frame();
+  }
+#undef ANV_SERVICE_REQ_DRIVE
+#undef ANV_SERVICE_REQ
+}
+
 CanFrame make_node_hb(const NodeHbMsg& hb) {
   CanFrame f;
 #define ANV_NODE_HB(NAME, ID, LEN)                           \

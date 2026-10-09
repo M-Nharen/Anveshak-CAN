@@ -9,7 +9,7 @@ import launch_testing.actions
 import pytest
 import rclpy
 from anveshak_can_msgs.msg import BusStatus, DriveFeedback, NodeRegistry
-from anveshak_can_msgs.srv import Arm, Disarm, Estop, ParamGet, RequestLead, SetDebug
+from anveshak_can_msgs.srv import Arm, Disarm, Estop, ParamGet, RequestLead, SetDebug, SetRate, TakeControl
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Twist
 
@@ -114,9 +114,25 @@ class TestDrive(unittest.TestCase):
         self.assertIsNotNone(self.diag)
         self.assertTrue(any(s.name == "can_gateway" for s in self.diag.status))
 
-        # Stub services answer, they just say no.
+        # Parameter reads against the simulated rover (no SERVICE responder) time out, not crash.
         res = self.call(ParamGet, "/can/param_get", ParamGet.Request(node_id=4, index=0))
         self.assertFalse(res.success)
+
+        # /can/set_rate: host rates are gateway settings, applied directly.
+        res = self.call(SetRate, "/can/set_rate", SetRate.Request(target=SetRate.Request.TARGET_HOST_HB, hz=25.0))
+        self.assertTrue(res.success, res.message)
+        res = self.call(SetRate, "/can/set_rate", SetRate.Request(target=SetRate.Request.TARGET_CYCLE, hz=10.0))
+        self.assertFalse(res.success)  # below the 25 Hz floor
+
+        # /can/take_control: one holder at a time, released by the same holder id.
+        res = self.call(TakeControl, "/can/take_control", TakeControl.Request(holder="teleop", release=False))
+        self.assertTrue(res.success and res.holding, res.message)
+        res = self.call(TakeControl, "/can/take_control", TakeControl.Request(holder="dashboard", release=False))
+        self.assertFalse(res.success)  # teleop already holds it
+        res = self.call(TakeControl, "/can/take_control", TakeControl.Request(holder="teleop", release=True))
+        self.assertTrue(res.success, res.message)
+
+        # Stub: debug levels are separate work (B4).
         res = self.call(SetDebug, "/can/set_debug", SetDebug.Request(node_id=0, level=1, category_mask=0))
         self.assertFalse(res.success)
 

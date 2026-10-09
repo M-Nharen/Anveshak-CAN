@@ -39,6 +39,11 @@ enum class NmtCommand : uint8_t { Arm = 1, Disarm = 2, Reset = 3, EnterBootloade
 
 enum class DriveMode : uint8_t { Coast = 0, Brake = 1, Velocity = 2, OpenLoopDuty = 3 };
 
+// SERVICE opcode (docs/architecture.md "Message catalog", defs/rover.dbc comment on *_SERVICE_REQ_*).
+enum class ServiceOpcode : uint8_t { Get = 1, Set = 2, Save = 3, RestoreDefaults = 4, Info = 5, LogRead = 6, LogClear = 7 };
+// SERVICE response status (defs/rover.dbc comment on *_SERVICE_RESP_*).
+enum class ServiceStatus : uint8_t { Ok = 0, BadIndex = 1, OutOfRange = 2, NotAllowedWhileArmed = 3, FlashError = 4 };
+
 // HOST_HB flags byte
 constexpr uint8_t kHbFlagAutonomyReady = 1u << 0;
 constexpr uint8_t kHbFlagOperatorLink = 1u << 1;

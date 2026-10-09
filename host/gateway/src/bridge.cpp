@@ -57,6 +57,7 @@ std::string state_to_json(const GatewayState& s) {
                   ",\"estop_latched\":" + b(s.estop_latched) + ",\"cycles_sent\":" + std::to_string(s.cycles_sent) +
                   ",\"late_cycles\":" + std::to_string(s.late_cycles) +
                   ",\"worst_lateness_us\":" + std::to_string(s.worst_lateness_ns / 1000) +
+                  ",\"cycle_hz\":" + num(s.cycle_hz) + ",\"host_hb_hz\":" + num(s.host_hb_hz) +
                   ",\"bus\":{\"rx_frames\":" + std::to_string(s.bus.rx_frames) + ",\"tx_frames\":" + std::to_string(s.bus.tx_frames) +
                   ",\"tx_failures\":" + std::to_string(s.bus.tx_failures) + ",\"error_frames\":" + std::to_string(s.bus.error_frames) +
                   ",\"undecoded_frames\":" + std::to_string(s.bus.undecoded_frames) + ",\"bus_off\":" + b(s.bus.bus_off) +
@@ -176,6 +177,36 @@ std::string Bridge::handle(const std::string& line) {
     const json::Value* h = req.get("host");
     if (!h || h->type != json::Value::Number || (h->num != 1 && h->num != 2)) return fail("host must be 1 or 2");
     return result(gw_.request_lead(static_cast<uint8_t>(h->num)));
+  }
+  if (cmd == "get_param" || cmd == "set_param" || cmd == "save_param" || cmd == "restore_param") {
+    const json::Value* nv = req.get("node");
+    const json::Value* iv = req.get("index");
+    if (!nv || nv->type != json::Value::Number || !iv || iv->type != json::Value::Number)
+      return fail("node and index required");
+    uint32_t value_raw = 0;
+    ServiceOpcode op = ServiceOpcode::Get;
+    if (cmd == "set_param") {
+      const json::Value* vv = req.get("value_raw");
+      if (!vv || vv->type != json::Value::Number) return fail("value_raw required");
+      value_raw = static_cast<uint32_t>(vv->num);
+      op = ServiceOpcode::Set;
+    } else if (cmd == "save_param") {
+      op = ServiceOpcode::Save;
+    } else if (cmd == "restore_param") {
+      op = ServiceOpcode::RestoreDefaults;
+    }
+    const ServiceResult r = gw_.service_request(static_cast<uint8_t>(nv->num), op, static_cast<uint16_t>(iv->num), value_raw);
+    return "{\"id\":" + id + ",\"ok\":" + b(r.result == CmdResult::Ok && r.status == 0) +
+           ",\"result\":" + json::quote(cmd_result_name(r.result)) + ",\"status\":" + std::to_string(r.status) +
+           ",\"value_raw\":" + std::to_string(r.value_raw) + "}";
+  }
+  if (cmd == "set_host_rate") {
+    const json::Value* cv = req.get("cycle_hz");
+    const json::Value* hv = req.get("host_hb_hz");
+    CmdResult r = CmdResult::Ok;
+    if (cv && cv->type == json::Value::Number) r = gw_.set_cycle_rate_hz(cv->num);
+    if (r == CmdResult::Ok && hv && hv->type == json::Value::Number) r = gw_.set_host_hb_rate_hz(hv->num);
+    return result(r);
   }
   if (cmd == "set_targets") {
     const json::Value* w = req.get("wheels");

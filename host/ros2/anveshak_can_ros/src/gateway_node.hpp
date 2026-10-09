@@ -24,6 +24,8 @@
 #include "anveshak_can_msgs/srv/param_set.hpp"
 #include "anveshak_can_msgs/srv/request_lead.hpp"
 #include "anveshak_can_msgs/srv/set_debug.hpp"
+#include "anveshak_can_msgs/srv/set_rate.hpp"
+#include "anveshak_can_msgs/srv/take_control.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -66,12 +68,14 @@ class GatewayNode : public rclcpp::Node {
   std::unique_ptr<anv::gw::Gateway> gateway_;
   int event_sub_ = 0;
 
-  std::mutex mu_;  // guards targets_, events_
+  std::mutex mu_;  // guards targets_, events_, manual_holder_
   std::array<anv::gw::WheelTarget, anv::gw::kNumDrives> targets_{};
   Clock::time_point targets_time_{};
   bool have_targets_ = false;
   bool zero_sent_ = true;
   std::deque<anveshak_can_msgs::msg::CanEvent> events_;
+  // /can/take_control: while held, /cmd_vel (autonomy) is ignored; /cmd/drive always goes through.
+  std::string manual_holder_;
 
   rclcpp::Subscription<anveshak_can_msgs::msg::DriveTargets>::SharedPtr sub_drive_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_vel_;
@@ -90,6 +94,8 @@ class GatewayNode : public rclcpp::Node {
   rclcpp::Service<anveshak_can_msgs::srv::ParamGet>::SharedPtr srv_param_get_;
   rclcpp::Service<anveshak_can_msgs::srv::ParamSet>::SharedPtr srv_param_set_;
   rclcpp::Service<anveshak_can_msgs::srv::SetDebug>::SharedPtr srv_debug_;
+  rclcpp::Service<anveshak_can_msgs::srv::SetRate>::SharedPtr srv_set_rate_;
+  rclcpp::Service<anveshak_can_msgs::srv::TakeControl>::SharedPtr srv_take_control_;
 };
 
 }  // namespace anv::ros2

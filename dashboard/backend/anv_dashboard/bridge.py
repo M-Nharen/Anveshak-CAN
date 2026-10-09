@@ -22,6 +22,13 @@ class Bridge(Protocol):
     async def estop(self) -> dict[str, Any]: ...
     async def release_estop(self) -> dict[str, Any]: ...
     async def request_lead(self, host: int) -> dict[str, Any]: ...
+    async def get_param(self, node: int, index: int) -> dict[str, Any]: ...
+    async def set_param(self, node: int, index: int, value_raw: int) -> dict[str, Any]: ...
+    async def save_param(self, node: int, index: int) -> dict[str, Any]: ...
+    async def restore_param(self, node: int, index: int) -> dict[str, Any]: ...
+    async def set_host_rate(
+        self, cycle_hz: float | None = None, host_hb_hz: float | None = None
+    ) -> dict[str, Any]: ...
     async def close(self) -> None: ...
 
 
@@ -101,6 +108,28 @@ class GatewayBridge:
 
     async def request_lead(self, host: int) -> dict[str, Any]:
         return await self._main.call("request_lead", host=host)
+
+    async def get_param(self, node: int, index: int) -> dict[str, Any]:
+        return await self._main.call("get_param", node=node, index=index)
+
+    async def set_param(self, node: int, index: int, value_raw: int) -> dict[str, Any]:
+        return await self._main.call("set_param", node=node, index=index, value_raw=value_raw)
+
+    async def save_param(self, node: int, index: int) -> dict[str, Any]:
+        return await self._main.call("save_param", node=node, index=index)
+
+    async def restore_param(self, node: int, index: int) -> dict[str, Any]:
+        return await self._main.call("restore_param", node=node, index=index)
+
+    async def set_host_rate(
+        self, cycle_hz: float | None = None, host_hb_hz: float | None = None
+    ) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+        if cycle_hz is not None:
+            fields["cycle_hz"] = cycle_hz
+        if host_hb_hz is not None:
+            fields["host_hb_hz"] = host_hb_hz
+        return await self._main.call("set_host_rate", **fields)
 
     async def close(self) -> None:
         await self._main.close()

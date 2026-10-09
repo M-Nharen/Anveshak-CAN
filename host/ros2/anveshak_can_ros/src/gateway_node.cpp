@@ -47,6 +47,12 @@ msgs::msg::NodeStatus to_msg(const anv::gw::NodeInfo& n) {
   return m;
 }
 
+std::string service_message(const anv::gw::ServiceResult& r) {
+  if (r.result != CmdResult::Ok) return anv::gw::cmd_result_name(r.result);
+  if (r.status != 0) return "node refused: status " + std::to_string(r.status);
+  return "ok";
+}
+
 }  // namespace
 
 GatewayNode::GatewayNode() : rclcpp::Node("can_gateway") {
@@ -85,18 +91,70 @@ GatewayNode::GatewayNode() : rclcpp::Node("can_gateway") {
       "can/request_lead", [this](Req<msgs::srv::RequestLead> req, Res<msgs::srv::RequestLead> res) {
         answer(gateway_->request_lead(req->host_id), "request lead", &res->success, &res->message);
       });
-  // Stubs: the parameter service and the debug levels are separate pieces of work.
   srv_param_get_ = create_service<msgs::srv::ParamGet>(
-      "can/param_get", [](Req<msgs::srv::ParamGet>, Res<msgs::srv::ParamGet> res) {
-        res->success = false;
-        res->message = "not implemented yet";
-        res->value_raw = 0;
+      "can/param_get", [this](Req<msgs::srv::ParamGet> req, Res<msgs::srv::ParamGet> res) {
+        const auto r = gateway_->service_request(req->node_id, anv::gw::ServiceOpcode::Get, req->index);
+        res->success = r.result == CmdResult::Ok && r.status == 0;
+        res->value_raw = r.value_raw;
+        res->message = service_message(r);
       });
   srv_param_set_ = create_service<msgs::srv::ParamSet>(
-      "can/param_set", [](Req<msgs::srv::ParamSet>, Res<msgs::srv::ParamSet> res) {
-        res->success = false;
-        res->message = "not implemented yet";
+      "can/param_set", [this](Req<msgs::srv::ParamSet> req, Res<msgs::srv::ParamSet> res) {
+        auto r = gateway_->service_request(req->node_id, anv::gw::ServiceOpcode::Set, req->index, req->value_raw);
+        if (r.result == CmdResult::Ok && r.status == 0 && req->save)
+          r = gateway_->service_request(req->node_id, anv::gw::ServiceOpcode::Save, req->index);
+        res->success = r.result == CmdResult::Ok && r.status == 0;
+        res->message = service_message(r);
       });
+  srv_set_rate_ = create_service<msgs::srv::SetRate>(
+      "can/set_rate", [this](Req<msgs::srv::SetRate> req, Res<msgs::srv::SetRate> res) {
+        if (req->target == msgs::srv::SetRate::Request::TARGET_CYCLE) {
+          answer(gateway_->set_cycle_rate_hz(req->hz), "set cycle rate", &res->success, &res->message);
+        } else if (req->target == msgs::srv::SetRate::Request::TARGET_HOST_HB) {
+          answer(gateway_->set_host_hb_rate_hz(req->hz), "set host heartbeat rate", &res->success, &res->message);
+        } else if (req->target == msgs::srv::SetRate::Request::TARGET_NODE_PARAM) {
+          const auto r =
+              gateway_->service_request(req->node_id, anv::gw::ServiceOpcode::Set, req->index, req->value_raw);
+          res->success = r.result == CmdResult::Ok && r.status == 0;
+          res->message = service_message(r);
+        } else {
+          res->success = false;
+          res->message = "unknown target";
+        }
+      });
+  srv_take_control_ = create_service<msgs::srv::TakeControl>(
+      "can/take_control", [this](Req<msgs::srv::TakeControl> req, Res<msgs::srv::TakeControl> res) {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (req->release) {
+          res->holding = false;
+          if (manual_holder_ == req->holder && !req->holder.empty()) {
+            manual_holder_.clear();
+            res->success = true;
+            res->message = "control released";
+          } else {
+            res->success = false;
+            res->message = "you do not hold control";
+          }
+          return;
+        }
+        if (req->holder.empty()) {
+          res->success = false;
+          res->message = "holder id required";
+          res->holding = false;
+          return;
+        }
+        if (manual_holder_.empty() || manual_holder_ == req->holder) {
+          manual_holder_ = req->holder;
+          res->success = true;
+          res->message = "you have manual control";
+          res->holding = true;
+        } else {
+          res->success = false;
+          res->message = "another holder has manual control";
+          res->holding = false;
+        }
+      });
+  // Stub: debug levels are separate work (B4).
   srv_debug_ = create_service<msgs::srv::SetDebug>(
       "can/set_debug", [](Req<msgs::srv::SetDebug>, Res<msgs::srv::SetDebug> res) {
         res->success = false;
@@ -219,6 +277,10 @@ void GatewayNode::store_targets(const std::array<anv::gw::WheelTarget, anv::gw::
 }
 
 void GatewayNode::on_cmd_vel(const geometry_msgs::msg::Twist::ConstSharedPtr msg) {
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!manual_holder_.empty()) return;  // /can/take_control is held: autonomy is ignored
+  }
   store_targets(twist_to_targets(msg->linear.x, msg->angular.z, kin_));
 }
 

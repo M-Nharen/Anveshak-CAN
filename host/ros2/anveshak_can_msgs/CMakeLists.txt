@@ -23,6 +23,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ParamGet.srv"
   "srv/ParamSet.srv"
   "srv/SetDebug.srv"
+  "srv/SetRate.srv"
+  "srv/TakeControl.srv"
   DEPENDENCIES std_msgs builtin_interfaces
 )
 
