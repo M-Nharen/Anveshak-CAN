@@ -135,8 +135,8 @@ void GatewayNode::declare_parameters() {
 
   declare_parameter<double>("wheel_radius", 0.15);
   declare_parameter<double>("track_width", 0.60);
-  declare_parameter<std::vector<int64_t>>("left_drives", {1, 2, 3});
-  declare_parameter<std::vector<int64_t>>("right_drives", {4, 5, 6});
+  declare_parameter<std::vector<int64_t>>("left_drives", std::vector<int64_t>{1, 2, 3});
+  declare_parameter<std::vector<int64_t>>("right_drives", std::vector<int64_t>{4, 5, 6});
   declare_parameter<bool>("invert_left", false);
   declare_parameter<bool>("invert_right", false);
   declare_parameter<double>("accel_limit", 10.0);
@@ -158,8 +158,11 @@ bool GatewayNode::setup_gateway() {
   kin_.accel_limit = get_parameter("accel_limit").as_double();
   kin_.left_drives.clear();
   kin_.right_drives.clear();
-  for (auto d : get_parameter("left_drives").as_integer_array()) kin_.left_drives.push_back(static_cast<int>(d));
-  for (auto d : get_parameter("right_drives").as_integer_array()) kin_.right_drives.push_back(static_cast<int>(d));
+  // Keep the Parameter objects alive: as_integer_array() returns a reference into them.
+  const rclcpp::Parameter left = get_parameter("left_drives");
+  const rclcpp::Parameter right = get_parameter("right_drives");
+  for (auto d : left.as_integer_array()) kin_.left_drives.push_back(static_cast<int>(d));
+  for (auto d : right.as_integer_array()) kin_.right_drives.push_back(static_cast<int>(d));
   std::string err;
   if (!validate(kin_, &err)) {
     RCLCPP_FATAL(get_logger(), "bad kinematics parameters: %s", err.c_str());
