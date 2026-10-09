@@ -3,7 +3,7 @@
 Pure logic with an injected clock, so the 200 ms rule is tested without sleeping.
 
 * Only one browser (client id) holds control. It is released if that browser disconnects.
-* The holder sends drive messages (forward, turn in -1..1) at about 20 Hz while a key or the
+* The holder sends drive messages (forward, turn in -1..1; positive turn = clockwise, i.e. to the right) at about 20 Hz while a key or the
   joystick is held. If nothing arrives for `hold_timeout_s`, the targets are zero.
 * `tick()` is called at control_hz; it returns the six wheel targets to send to the gateway, or
   None when there is nothing to send. After the last non-zero command it returns one zero set.
@@ -112,8 +112,8 @@ class ControlManager:
 
     def _targets(self, fwd: float, turn: float) -> list[dict[str, float]]:
         top = self.limits.cap * self.limits.level
-        left = clamp(fwd - turn, -1.0, 1.0) * top
-        right = clamp(fwd + turn, -1.0, 1.0) * top
+        left = clamp(fwd + turn, -1.0, 1.0) * top
+        right = clamp(fwd - turn, -1.0, 1.0) * top
         wheels = []
         per_drive = []
         for drive in range(1, NUM_DRIVES + 1):

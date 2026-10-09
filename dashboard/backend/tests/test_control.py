@@ -90,12 +90,12 @@ def test_mixing_cap_and_sides():
     assert all(
         w["accel"] == 7.0 and w["mode"] == 2 and w["a"] == w["b"] for w in wheels
     )
-    cm.drive("a", 0.0, 1.0)  # spin: left back, right forward
+    cm.drive("a", 0.0, 1.0)  # spin to the right: left forward, right back
     s = speeds(cm.tick())
-    assert s[:3] == [-4.0] * 3 and s[3:] == [4.0] * 3
+    assert s[:3] == [4.0] * 3 and s[3:] == [-4.0] * 3
     cm.drive("a", 1.0, 1.0)  # saturates instead of exceeding the cap
     s = speeds(cm.tick())
-    assert s[:3] == [0.0] * 3 and s[3:] == [4.0] * 3
+    assert s[:3] == [4.0] * 3 and s[3:] == [0.0] * 3
     cm.drive("a", 9.0, -9.0)  # out-of-range input is clamped
     assert max(abs(x) for x in speeds(cm.tick())) <= 4.0
 

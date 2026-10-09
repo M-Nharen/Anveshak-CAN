@@ -89,24 +89,46 @@ jobs:
   # ros2: the ROS 2 build and test jobs (anveshak_can_msgs, anveshak_can_ros on the ros:humble and
   # ros:jazzy containers) are added by prompt B2, next to the gateway job above.
 
-  # dashboard:
-  #   name: Dashboard (backend + frontend)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.11"
-  #     - name: Backend tests (FastAPI)
-  #       run: |
-  #         pip install -r dashboard/backend/requirements.txt
-  #         pytest dashboard/backend
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: "20"
-  #     - name: Frontend build and tests (Svelte)
-  #       run: |
-  #         cd dashboard/frontend
-  #         npm ci
-  #         npm run build
-  #         npm test
+  dashboard:
+    name: Dashboard (backend + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Backend lint and tests (FastAPI)
+        run: |
+          pip install -r dashboard/backend/requirements.txt ruff
+          ruff check dashboard/backend 2>&1 | tee backend.log
+          test "${PIPESTATUS[0]}" -eq 0
+          cd dashboard/backend
+          pytest -q 2>&1 | tee ../../backend.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No lockfile is committed yet, so this installs the versions pinned in package.json.
+      - name: Frontend build (Svelte + uPlot)
+        run: |
+          cd dashboard/frontend
+          npm install --no-audit --no-fund 2>&1 | tee ../../frontend.log
+          test "${PIPESTATUS[0]}" -eq 0
+          npm run build 2>&1 | tee -a ../../frontend.log
+          test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
+
+      # The tail of a failure goes into an annotation, where it is easy to read.
+      - name: Summarise failure
+        if: failure()
+        run: |
+          for f in backend.log frontend.log; do
+            [ -f "$f" ] && echo "::error title=dashboard $f::$(grep -iE 'error|fail|assert|Traceback|warn' "$f" | head -25 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+          done
+          exit 0
+        shell: bash
