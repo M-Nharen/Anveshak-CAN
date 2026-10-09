@@ -1,0 +1,148 @@
+# Parameter table for drive nodes (STM32, node IDs 4-9).
+#
+# Read and written live over SERVICE (GET/SET/SAVE/RESTORE_DEFAULTS), docs/architecture.md
+# "Node firmware" and "Message catalog". Turned into a C table and a Python table by
+# defs/codegen/generate.py. `index` is the u16 PARAM_INDEX carried in SERVICE frames.
+# Safety-related parameters (gains, limits) can only be changed while DISARMED.
+node_type: drive
+
+parameters:
+  - index: 0
+    name: pid_kp_a
+    type: f32
+    min: 0.0
+    max: 1000.0
+    default: 10.0
+    unit: ""
+    disarmed_only: true
+    description: "Velocity PID proportional gain, channel A"
+
+  - index: 1
+    name: pid_ki_a
+    type: f32
+    min: 0.0
+    max: 1000.0
+    default: 1.0
+    unit: ""
+    disarmed_only: true
+    description: "Velocity PID integral gain, channel A"
+
+  - index: 2
+    name: pid_kd_a
+    type: f32
+    min: 0.0
+    max: 1000.0
+    default: 0.0
+    unit: ""
+    disarmed_only: true
+    description: "Velocity PID derivative gain, channel A"
+
+  - index: 3
+    name: pid_kp_b
+    type: f32
+    min: 0.0
+    max: 1000.0
+    default: 10.0
+    unit: ""
+    disarmed_only: true
+    description: "Velocity PID proportional gain, channel B"
+
+  - index: 4
+    name: pid_ki_b
+    type: f32
+    min: 0.0
+    max: 1000.0
+    default: 1.0
+    unit: ""
+    disarmed_only: true
+    description: "Velocity PID integral gain, channel B"
+
+  - index: 5
+    name: pid_kd_b
+    type: f32
+    min: 0.0
+    max: 1000.0
+    default: 0.0
+    unit: ""
+    disarmed_only: true
+    description: "Velocity PID derivative gain, channel B"
+
+  - index: 6
+    name: current_limit_ma
+    type: u32
+    min: 0
+    max: 51000
+    default: 20000
+    unit: mA
+    disarmed_only: true
+    description: "Per-channel current limit before OVERCURRENT_A/B is raised and the output is cut"
+
+  - index: 7
+    name: max_speed
+    type: i32
+    min: -32768
+    max: 32767
+    default: 20000
+    unit: "0.01 rad/s"
+    disarmed_only: true
+    description: "Clamp applied to DRIVE_CMD targets, same scale as the DRIVE_CMD signal"
+
+  - index: 8
+    name: encoder_counts_per_rev
+    type: u32
+    min: 1
+    max: 1000000
+    default: 4096
+    unit: counts/rev
+    disarmed_only: true
+    description: "Encoder counts per motor revolution, used by the host for odometry"
+
+  - index: 9
+    name: brake_or_coast
+    type: u8
+    min: 0
+    max: 1
+    default: 1
+    unit: ""
+    disarmed_only: true
+    description: "Output state while DISARMED: 0 coast, 1 brake"
+
+  - index: 10
+    name: rate_fb_hz
+    type: u8
+    min: 1
+    max: 50
+    default: 50
+    unit: Hz
+    disarmed_only: false
+    description: "DRIVE_FB_A/B rate"
+
+  - index: 11
+    name: rate_telem_hz
+    type: u8
+    min: 1
+    max: 10
+    default: 10
+    unit: Hz
+    disarmed_only: false
+    description: "DRIVE_TELEM_0/1 rate at debug level 1 or higher (1 Hz at level 0, fixed)"
+
+  - index: 12
+    name: rate_hb_hz
+    type: u8
+    min: 1
+    max: 10
+    default: 10
+    unit: Hz
+    disarmed_only: false
+    description: "NODE_HB rate"
+
+  - index: 13
+    name: debug_default
+    type: u8
+    min: 0
+    max: 3
+    default: 0
+    unit: ""
+    disarmed_only: false
+    description: "Debug level restored after every reboot: 1 for testing, 0 for competition"

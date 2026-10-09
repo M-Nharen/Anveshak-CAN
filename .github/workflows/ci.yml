@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  defs-and-sim:
+    name: Definitions, codegen and simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r defs/requirements.txt -r host/sim/requirements.txt ruff
+
+      - name: Validate defs/rover.dbc and defs/errors.yaml
+        run: python defs/codegen/check.py
+
+      - name: Regenerate code and confirm it is committed
+        run: |
+          python defs/codegen/generate.py
+          git diff --exit-code -- firmware/generated defs/generated
+
+      - name: Lint Python sources
+        run: ruff check defs/codegen host/sim
+
+      - name: Run simulator tests
+        run: pytest host/sim -v
+
+  # --- Later P0 siblings fill these in; left here so the pipeline shape is visible early. ---
+
+  # firmware:
+  #   name: Firmware (core library, host-side unit tests)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Build anveshak_can_core for Linux and run loopback-driver unit tests
+  #       run: |
+  #         cmake -S firmware -B build -DCMAKE_BUILD_TYPE=Debug
+  #         cmake --build build
+  #         ctest --test-dir build --output-on-failure
+  #     - name: Cross-compile the drive node application (compile-only, arm-none-eabi-gcc)
+  #       run: |
+  #         sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+  #         cmake -S firmware/nodes/drive_stm32 -B build-stm32 \
+  #           -DCMAKE_TOOLCHAIN_FILE=firmware/cmake/arm-none-eabi.cmake
+  #         cmake --build build-stm32
+
+  # gateway:
+  #   name: Gateway core + ROS 2 (${{ matrix.ros_distro }})
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       ros_distro: [humble, jazzy]
+  #   container: ros:${{ matrix.ros_distro }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Build host/gateway and host/ros2/anveshak_can_ros
+  #       run: |
+  #         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
+  #         colcon build --packages-select anveshak_can_msgs anveshak_can_ros
+  #         colcon test --packages-select anveshak_can_msgs anveshak_can_ros
+
+  # dashboard:
+  #   name: Dashboard (backend + frontend)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.11"
+  #     - name: Backend tests (FastAPI)
+  #       run: |
+  #         pip install -r dashboard/backend/requirements.txt
+  #         pytest dashboard/backend
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "20"
+  #     - name: Frontend build and tests (Svelte)
+  #       run: |
+  #         cd dashboard/frontend
+  #         npm ci
+  #         npm run build
+  #         npm test

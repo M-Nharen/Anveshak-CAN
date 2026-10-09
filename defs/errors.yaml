@@ -1,0 +1,298 @@
+# Anveshak rover CAN error-code registry.
+#
+# Single source of truth for every error code on the bus (docs/architecture.md,
+# "Error reporting and diagnostics"). Turned into a C header and a Python module by
+# defs/codegen/generate.py. Codes are 16-bit: high byte is the category, low byte the
+# specific error. CI (defs/codegen/check.py) rejects duplicate codes.
+protocol_version: 1
+
+errors:
+  # 0x01xx - CAN and communication
+  - code: 0x0101
+    name: CAN_ERROR_PASSIVE
+    severity: warning
+    description: "Error counter passed 128"
+    likely_cause: "Wiring, noise, termination"
+  - code: 0x0102
+    name: CAN_BUS_OFF
+    severity: error
+    description: "Error counter passed 255"
+    likely_cause: "This node's transceiver, wiring or bitrate"
+  - code: 0x0103
+    name: CAN_BUS_OFF_RECOVERED
+    severity: info
+    description: "Rejoined the bus after bus-off"
+    likely_cause: "N/A, informational"
+  - code: 0x0104
+    name: CAN_RX_OVERFLOW
+    severity: warning
+    description: "Receive buffer full, frames lost"
+    likely_cause: "CPU too busy or filters too wide"
+  - code: 0x0105
+    name: CAN_TX_TIMEOUT
+    severity: warning
+    description: "Frame not sent within 20 ms"
+    likely_cause: "Bus jammed or node error-passive"
+  - code: 0x0106
+    name: CMD_TIMEOUT
+    severity: error
+    description: "No command from master for 100 ms"
+    likely_cause: "Master crashed, gateway stopped, or cable cut"
+  - code: 0x0107
+    name: MASTER_CHANGED
+    severity: info
+    description: "New term seen; node disarmed"
+    likely_cause: "N/A, informational"
+  - code: 0x0108
+    name: CMD_FROM_NON_MASTER
+    severity: warning
+    description: "Commands from a host that isn't master (detail = sender)"
+    likely_cause: "Stale host still transmitting, or misconfiguration"
+  - code: 0x0109
+    name: CAN_ACK_ERROR
+    severity: warning
+    description: "Nobody acknowledged"
+    likely_cause: "Node alone on bus, or everyone else at another bitrate"
+
+  # 0x02xx - Power
+  - code: 0x0201
+    name: UNDERVOLTAGE
+    severity: error
+    description: "Supply below limit (detail = mV)"
+    likely_cause: "Battery sag, bad connector, blown fuse"
+  - code: 0x0202
+    name: OVERVOLTAGE
+    severity: error
+    description: "Supply above limit (detail = mV)"
+    likely_cause: "Charger fault, regenerative braking spike"
+  - code: 0x0203
+    name: BROWNOUT_RESET
+    severity: error
+    description: "MCU reset by brown-out"
+    likely_cause: "Battery sag, bad connector"
+
+  # 0x03xx - Motor and driver
+  - code: 0x0301
+    name: OVERCURRENT_A
+    severity: error
+    description: "Current above limit on channel A (detail = mA)"
+    likely_cause: "Stall, short, current limit set too low"
+  - code: 0x0302
+    name: OVERCURRENT_B
+    severity: error
+    description: "Current above limit on channel B (detail = mA)"
+    likely_cause: "Stall, short, current limit set too low"
+  - code: 0x0303
+    name: DRIVER_FAULT_PIN
+    severity: error
+    description: "Motor driver reported a fault"
+    likely_cause: "Driver IC over-current, over-temp or under-voltage shutdown"
+  - code: 0x0304
+    name: STALL_DETECTED
+    severity: warning
+    description: "Commanded speed but no movement for 500 ms"
+    likely_cause: "Mechanical jam, encoder fault, or load too high"
+  - code: 0x0305
+    name: OUTPUT_SATURATED
+    severity: warning
+    description: "PID at 100% output for over 1 s"
+    likely_cause: "Load too high or gains wrong"
+
+  # 0x04xx - Thermal
+  - code: 0x0401
+    name: DRIVER_OVERTEMP
+    severity: error
+    description: "Driver temperature above limit (detail = degC)"
+    likely_cause: "Sustained high current, poor cooling"
+  - code: 0x0402
+    name: MCU_OVERTEMP
+    severity: warning
+    description: "MCU temperature above limit"
+    likely_cause: "Poor ventilation, nearby heat source"
+
+  # 0x05xx - Sensors and encoders
+  - code: 0x0501
+    name: ENCODER_A_NO_COUNTS
+    severity: error
+    description: "Motor driven but encoder A not counting"
+    likely_cause: "Unplugged or broken encoder"
+  - code: 0x0502
+    name: ENCODER_B_NO_COUNTS
+    severity: error
+    description: "Motor driven but encoder B not counting"
+    likely_cause: "Unplugged or broken encoder"
+  - code: 0x0503
+    name: ENCODER_DIRECTION
+    severity: error
+    description: "Encoder counts opposite to drive direction"
+    likely_cause: "Swapped wires"
+  - code: 0x0504
+    name: SENSOR_READ_FAIL
+    severity: warning
+    description: "I2C/SPI sensor didn't answer (detail = sensor index)"
+    likely_cause: "Loose wiring, sensor fault, bus contention"
+
+  # 0x06xx - System
+  - code: 0x0601
+    name: WATCHDOG_RESET
+    severity: error
+    description: "Firmware hung and the hardware watchdog reset it"
+    likely_cause: "Software bug, blocking call in main loop"
+  - code: 0x0602
+    name: HARD_FAULT
+    severity: critical
+    description: "Firmware crashed; crash record available"
+    likely_cause: "Null pointer, stack corruption, bad memory access"
+  - code: 0x0603
+    name: STACK_OVERFLOW
+    severity: critical
+    description: "A task overran its stack (ESP32-S3 / RTOS)"
+    likely_cause: "Deep recursion or stack size too small"
+  - code: 0x0604
+    name: PARAMS_CORRUPT
+    severity: error
+    description: "Parameter area failed its CRC; defaults loaded"
+    likely_cause: "Interrupted flash write, flash wear"
+  - code: 0x0605
+    name: FLASH_WRITE_FAIL
+    severity: error
+    description: "Saving parameters or logs failed"
+    likely_cause: "Flash wear, write-protected region, power loss during write"
+  - code: 0x0606
+    name: NODE_ID_INVALID
+    severity: critical
+    description: "ID switch unreadable or zero; running as node 31"
+    likely_cause: "DIP switch misconfigured or damaged"
+  - code: 0x0607
+    name: SELF_TEST_FAIL
+    severity: error
+    description: "Power-on self-test failed (detail = which test)"
+    likely_cause: "Hardware fault found before the rover moved"
+
+  # 0x07xx - Boot and update
+  - code: 0x0701
+    name: APP_CRC_FAIL
+    severity: critical
+    description: "Application image invalid; staying in bootloader"
+    likely_cause: "Interrupted flash of a new image"
+  - code: 0x0702
+    name: WRONG_NODE_TYPE
+    severity: error
+    description: "Image for a different node type rejected"
+    likely_cause: "Operator flashed the wrong firmware file"
+  - code: 0x0703
+    name: OTA_ROLLBACK
+    severity: error
+    description: "ESP32-S3 new image failed and rolled back"
+    likely_cause: "New image crashed or never called mark-app-valid"
+
+  # 0x08xx - Protocol
+  - code: 0x0801
+    name: PROTOCOL_MISMATCH
+    severity: error
+    description: "Node's protocol version differs from the master's"
+    likely_cause: "Node running stale firmware, or DBC out of sync"
+  - code: 0x0802
+    name: BAD_FRAME
+    severity: warning
+    description: "Known ID with the wrong length or an invalid value"
+    likely_cause: "Bus corruption or a non-conforming sender"
+
+  # 0x09xx - Safety
+  - code: 0x0901
+    name: ESTOP_PHYSICAL
+    severity: critical
+    description: "A physical E-stop button opened the contactor loop"
+    likely_cause: "Operator pressed the button"
+  - code: 0x0902
+    name: ESTOP_WIRELESS
+    severity: critical
+    description: "Wireless E-stop opened the loop"
+    likely_cause: "Button pressed, transmitter battery flat, or out of range"
+  - code: 0x0903
+    name: ESTOP_CAN
+    severity: critical
+    description: "ESTOP frame received over CAN (detail = sender, when known)"
+    likely_cause: "Another node or host requested an emergency stop"
+
+  # 0x80xx - Host and gateway (raised by the gateway, not by nodes)
+  - code: 0x8001
+    name: NODE_MISSING
+    severity: error
+    description: "No heartbeat from a node for 300 ms"
+    likely_cause: "Node powered off, crashed, or disconnected from the bus"
+  - code: 0x8002
+    name: NODE_RETURNED
+    severity: info
+    description: "A missing node is back (uptime shows whether it rebooted)"
+    likely_cause: "N/A, informational"
+  - code: 0x8003
+    name: NODE_REBOOTED
+    severity: warning
+    description: "Uptime went down: the node reset"
+    likely_cause: "Watchdog, brown-out, crash, or manual reset"
+  - code: 0x8004
+    name: MESSAGE_RATE_LOW
+    severity: warning
+    description: "An ID arriving slower than the DBC rate"
+    likely_cause: "Bus congestion, node overloaded, wiring issue"
+  - code: 0x8005
+    name: UNKNOWN_ID
+    severity: warning
+    description: "A frame with an ID not in the DBC"
+    likely_cause: "Unexpected device on the bus, or a DBC/firmware mismatch"
+  - code: 0x8006
+    name: CYCLE_LATE
+    severity: warning
+    description: "Control cycle started more than 2 ms late"
+    likely_cause: "Host CPU or OS scheduling jitter"
+  - code: 0x8007
+    name: TWO_MASTERS
+    severity: critical
+    description: "Two hosts claiming master"
+    likely_cause: "Election logic failure or split-brain network"
+  - code: 0x8008
+    name: HOST_RX_OVERRUN
+    severity: warning
+    description: "Host's CAN controller dropped frames (RPi MCP2515)"
+    likely_cause: "Host CPU too busy to drain the controller in time"
+  - code: 0x8009
+    name: BUS_ERROR_BURST
+    severity: warning
+    description: "More than 10 bus error frames in a second (detail = error type)"
+    likely_cause: "Wiring, termination, or noise problem"
+  - code: 0x800A
+    name: GATEWAY_RESTARTED
+    severity: warning
+    description: "Gateway process crashed and was restarted"
+    likely_cause: "Software bug in the gateway"
+  - code: 0x800B
+    name: LEADER_LOST
+    severity: critical
+    description: "Master's heartbeat missing for 250 ms; the other host offers to take over"
+    likely_cause: "Master host crashed or lost its CAN link"
+  - code: 0x800C
+    name: NO_LEADER
+    severity: info
+    description: "Hosts are up but no leader has been chosen yet"
+    likely_cause: "N/A, informational, expected right after boot"
+  - code: 0x800D
+    name: LEAD_CHANGED
+    severity: info
+    description: "A host took the lead (detail = new master and who requested it)"
+    likely_cause: "N/A, informational"
+  - code: 0x800E
+    name: CONTROL_ACTION
+    severity: info
+    description: "Someone changed a rate, parameter, override, control source or debug level (detail = what changed)"
+    likely_cause: "N/A, informational, operator action from the dashboard or ROS 2"
+  - code: 0x800F
+    name: CHANGE_REFUSED
+    severity: warning
+    description: "A requested change was refused"
+    likely_cause: "Bus load over 50%, below a safety floor, or rover armed"
+  - code: 0x8010
+    name: GATEWAY_LINK_LOST
+    severity: warning
+    description: "No messages from the other host's gateway over Ethernet for 1 s"
+    likely_cause: "Network link down, or the other host's gateway crashed"
