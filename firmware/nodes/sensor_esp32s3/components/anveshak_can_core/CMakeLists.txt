@@ -17,6 +17,8 @@ idf_component_register(
     "${ANV_CORE_DIR}/src/anv_nmt.c"
     "${ANV_CORE_DIR}/src/anv_estop.c"
     "${ANV_CORE_DIR}/src/anv_heartbeat.c"
+    "${ANV_CORE_DIR}/src/anv_debug.c"
+    "${ANV_CORE_DIR}/src/anv_diag.c"
     "${ANV_CORE_DIR}/src/anv_node.c"
     "${ANV_GENERATED_DIR}/rover.c"
   INCLUDE_DIRS

@@ -122,6 +122,31 @@ static void refresh_error_state(acc_can_fdcan_ctx_t *ctx)
 
     bool was_bus_off = (ctx->error_state.state == ACC_CAN_BUS_OFF);
 
+    /* Reading the protocol status clears its last-error-code field, so each read reports what
+     * happened since the previous read (called every tick and from the error interrupt). Two
+     * errors between reads count once: it shows which kind dominates, not an exact total. */
+    uint32_t *counts = ctx->error_state.error_type_counts;
+    switch (proto.LastErrorCode) {
+    case FDCAN_PROTOCOL_ERROR_STUFF:
+        counts[ACC_CAN_ERRTYPE_STUFF]++;
+        break;
+    case FDCAN_PROTOCOL_ERROR_FORM:
+        counts[ACC_CAN_ERRTYPE_FORM]++;
+        break;
+    case FDCAN_PROTOCOL_ERROR_ACK:
+        counts[ACC_CAN_ERRTYPE_ACK]++;
+        break;
+    case FDCAN_PROTOCOL_ERROR_BIT1:
+    case FDCAN_PROTOCOL_ERROR_BIT0:
+        counts[ACC_CAN_ERRTYPE_BIT]++;
+        break;
+    case FDCAN_PROTOCOL_ERROR_CRC:
+        counts[ACC_CAN_ERRTYPE_CRC]++;
+        break;
+    default:
+        break;
+    }
+
     ctx->error_state.tec = (uint8_t)counters.TxErrorCnt;
     ctx->error_state.rec = (uint8_t)counters.RxErrorCnt;
 

@@ -6,11 +6,13 @@
 # transitive requires.
 # PRIV_REQUIRES: esp_timer is used only inside main.c's implementation (esp_timer_get_time()
 # in board_now_ms()), never in a header this component exposes.
+# nvs_flash (black-box log blob), esp_system (esp_reset_reason) and espcoredump (panic PC from the
+# core dump summary) are used only inside main.c.
 # freertos is in every component's implicit common requirements (ESP-IDF's requires_common),
 # so it needs no entry here despite main.c including freertos/FreeRTOS.h and freertos/task.h.
 idf_component_register(
   SRCS "main.c"
   INCLUDE_DIRS "."
   REQUIRES twai anveshak_can_core driver
-  PRIV_REQUIRES esp_timer
+  PRIV_REQUIRES esp_timer nvs_flash esp_system espcoredump
 )

@@ -75,4 +75,12 @@
  * clock is approximate, so this is deliberately short of the ~50 ms budget. */
 #define DRIVE_IWDG_TIMEOUT_MS 40u
 
+/* Black-box log (anv_diag.h): the last flash sector, used as a ring of 512-byte slots so it is
+ * erased only once per 256 saves (board_log_flash.h). An erase can take 1-2 s on this part, which
+ * is why the node never writes the log periodically while armed. Keep this clear of the
+ * bootloader and application image when the linker script is written. */
+#define DRIVE_LOG_FLASH_SECTOR FLASH_SECTOR_7
+#define DRIVE_LOG_FLASH_BASE 0x08060000u
+#define DRIVE_LOG_FLASH_SIZE (128u * 1024u)
+
 #endif /* DRIVE_BOARD_CONFIG_F446_H */

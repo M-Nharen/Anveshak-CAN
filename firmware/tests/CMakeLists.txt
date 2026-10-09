@@ -5,6 +5,10 @@ set(ANV_CORE_TESTS
   test_estop
   test_params
   test_busoff
+  test_diag_events
+  test_blackbox
+  test_debug_levels
+  test_rates
 )
 
 foreach(test_name ${ANV_CORE_TESTS})

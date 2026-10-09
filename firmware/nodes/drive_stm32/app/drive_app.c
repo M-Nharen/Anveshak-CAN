@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "errors.h"
 #include "ids.h"
 #include "params_drive.h"
 #include "rover.h"
@@ -96,13 +97,20 @@ void drive_app_init(drive_app_t *app, uint8_t node_id, const acc_can_driver_t *d
 
     anv_node_init(&app->node, node_id, DRIVE_NODE_TYPE, DRIVE_PROTOCOL_VERSION, driver, txq_storage,
                   txq_capacity_per_prio, params, info, board, now_ms);
+    /* Before boot_complete: a failed self-test must leave the node in FAULT, not DISARMED. */
+    (void)anv_node_diag_start(&app->node, app->params_snapshot.debug_default, now_ms);
     anv_node_boot_complete(&app->node);
 
-    app->last_hb_rate_hz = app->params_snapshot.rate_hb_hz;
+    app->last_now_ms = now_ms;
+    app->last_hb_rate_hz = (uint8_t)anv_rate_clamp_hb(app->params_snapshot.rate_hb_hz);
     anv_node_set_hb_rate(&app->node, app->last_hb_rate_hz, now_ms);
 
-    app->last_telem_rate_hz = app->params_snapshot.rate_telem_hz;
+    app->last_telem_rate_hz =
+        (uint8_t)anv_debug_telemetry_rate_hz(&app->node.debug, app->params_snapshot.rate_telem_hz);
     anv_rate_sched_init(&app->telem_sched, app->last_telem_rate_hz, now_ms);
+
+    app->last_debug_rate_hz = anv_debug_page_rate_hz(&app->node.debug);
+    anv_rate_sched_init(&app->debug_sched, app->last_debug_rate_hz, now_ms);
 }
 
 static void send_drive_fb(drive_app_t *app)
@@ -149,6 +157,7 @@ static void send_drive_fb(drive_app_t *app)
 
 void drive_app_on_rx_frame(drive_app_t *app, const acc_can_frame_t *frame, uint32_t now_ms)
 {
+    app->last_now_ms = now_ms;
     anv_node_on_rx_frame(&app->node, frame, now_ms);
 
     if (frame->id != ROVER_SYNC_FRAME_ID) {
@@ -167,7 +176,14 @@ void drive_app_on_rx_frame(drive_app_t *app, const acc_can_frame_t *frame, uint3
         }
     }
 
-    send_drive_fb(app);
+    /* rate_fb_hz divides the 50 Hz cycle: 50 = every SYNC, 25 = every 2nd, 10 = every 5th. */
+    uint32_t rate = app->params_snapshot.rate_fb_hz;
+    uint32_t divider = (rate == 0u || rate > 50u) ? 1u : 50u / rate;
+    app->sync_count++;
+    if (app->sync_count >= divider) {
+        app->sync_count = 0u;
+        send_drive_fb(app);
+    }
 }
 
 void drive_app_motor_step(drive_app_t *app, uint32_t dt_ms)
@@ -175,6 +191,17 @@ void drive_app_motor_step(drive_app_t *app, uint32_t dt_ms)
     refresh_params_snapshot(app);
     bool armed = (anv_node_state(&app->node) == ANV_STATE_ARMED);
     drive_motor_app_step(&app->motor, armed, dt_ms);
+
+    static const uint16_t oc_codes[DRIVE_MOTOR_CHANNEL_COUNT] = {ROVER_ERR_OVERCURRENT_A, ROVER_ERR_OVERCURRENT_B};
+    for (uint8_t ch = 0; ch < DRIVE_MOTOR_CHANNEL_COUNT; ch++) {
+        uint32_t ma = app->motor.current_ma[ch];
+        uint16_t detail = (uint16_t)(ma > 0xFFFFu ? 0xFFFFu : ma);
+        if (app->motor.overcurrent[ch]) {
+            anv_node_raise(&app->node, oc_codes[ch], detail, app->last_now_ms);
+        } else {
+            anv_node_lower(&app->node, oc_codes[ch], detail, app->last_now_ms);
+        }
+    }
 }
 
 static void send_telemetry(drive_app_t *app)
@@ -200,10 +227,10 @@ static void send_telemetry(drive_app_t *app)
     struct rover_drive1_telem_1_t t1 = {
         .duty_a = app->motor.duty_cpercent[DRIVE_MOTOR_CHANNEL_A],
         .duty_b = app->motor.duty_cpercent[DRIVE_MOTOR_CHANNEL_B],
-        /* Not wired in this template: a real board needs a backup-register reset counter and
-         * cause, and a DRIVE_CMD sequence-gap counter. Left at 0 -- see the PR description. */
+        /* The reset cause comes from the board's reset_cause hook; the reset counter and the
+         * DRIVE_CMD sequence-gap counter are still not wired in this template (left at 0). */
         .watchdog_reset_count = 0u,
-        .last_reset_cause = 0u,
+        .last_reset_cause = app->node.reset_cause,
         .commands_missed = 0u,
     };
     acc_can_frame_t frame1;
@@ -215,20 +242,79 @@ static void send_telemetry(drive_app_t *app)
     }
 }
 
+/* DRIVE_DEBUG_A/_B: what the PID is doing per channel, for tuning. Only sent while a debug
+ * level asks for it, so a normal rover carries none of this traffic. */
+static int16_t clamp_i16(float v)
+{
+    if (v > 32767.0f) {
+        return 32767;
+    }
+    if (v < -32768.0f) {
+        return -32768;
+    }
+    return (int16_t)v;
+}
+
+static void send_debug_pages(drive_app_t *app)
+{
+    const drive_motor_app_t *m = &app->motor;
+    struct rover_drive1_debug_a_t a = {
+        .setpoint = clamp_i16(m->pid[DRIVE_MOTOR_CHANNEL_A].ramped_target_crad_s),
+        .measured = m->measured_crad_s[DRIVE_MOTOR_CHANNEL_A],
+        .integrator = clamp_i16(m->pid[DRIVE_MOTOR_CHANNEL_A].integral),
+        .output = m->duty_cpercent[DRIVE_MOTOR_CHANNEL_A],
+    };
+    acc_can_frame_t frame_a;
+    frame_a.id = ROVER_CAN_ID(ROVER_CLASS_TELEMETRY, app->node.node_id, 2u);
+    int packed = rover_drive1_debug_a_pack(frame_a.data, &a, sizeof(frame_a.data));
+    if (packed >= 0) {
+        frame_a.dlc = (uint8_t)packed;
+        (void)anv_node_send(&app->node, ACC_CAN_PRIO_TELEMETRY, &frame_a);
+    }
+
+    struct rover_drive1_debug_b_t b = {
+        .setpoint = clamp_i16(m->pid[DRIVE_MOTOR_CHANNEL_B].ramped_target_crad_s),
+        .measured = m->measured_crad_s[DRIVE_MOTOR_CHANNEL_B],
+        .integrator = clamp_i16(m->pid[DRIVE_MOTOR_CHANNEL_B].integral),
+        .output = m->duty_cpercent[DRIVE_MOTOR_CHANNEL_B],
+    };
+    acc_can_frame_t frame_b;
+    frame_b.id = ROVER_CAN_ID(ROVER_CLASS_TELEMETRY, app->node.node_id, 3u);
+    packed = rover_drive1_debug_b_pack(frame_b.data, &b, sizeof(frame_b.data));
+    if (packed >= 0) {
+        frame_b.dlc = (uint8_t)packed;
+        (void)anv_node_send(&app->node, ACC_CAN_PRIO_TELEMETRY, &frame_b);
+    }
+}
+
 void drive_app_tick(drive_app_t *app, uint32_t now_ms)
 {
+    app->last_now_ms = now_ms;
     anv_node_tick(&app->node, now_ms);
 
-    if (app->params_snapshot.rate_hb_hz != app->last_hb_rate_hz) {
-        app->last_hb_rate_hz = app->params_snapshot.rate_hb_hz;
-        anv_node_set_hb_rate(&app->node, app->last_hb_rate_hz, now_ms);
+    /* Rates can change live (SERVICE SET, or a DEBUG_LEVEL request); pick the change up here.
+     * The heartbeat never goes below its safety floor, whatever the parameter says. */
+    uint8_t hb_rate = (uint8_t)anv_rate_clamp_hb(app->params_snapshot.rate_hb_hz);
+    if (hb_rate != app->last_hb_rate_hz) {
+        app->last_hb_rate_hz = hb_rate;
+        anv_node_set_hb_rate(&app->node, hb_rate, now_ms);
     }
-    if (app->params_snapshot.rate_telem_hz != app->last_telem_rate_hz) {
-        app->last_telem_rate_hz = app->params_snapshot.rate_telem_hz;
-        anv_rate_sched_set_rate(&app->telem_sched, app->last_telem_rate_hz, now_ms);
+    uint8_t telem_rate =
+        (uint8_t)anv_debug_telemetry_rate_hz(&app->node.debug, app->params_snapshot.rate_telem_hz);
+    if (telem_rate != app->last_telem_rate_hz) {
+        app->last_telem_rate_hz = telem_rate;
+        anv_rate_sched_set_rate(&app->telem_sched, telem_rate, now_ms);
+    }
+    uint32_t debug_rate = anv_debug_page_rate_hz(&app->node.debug);
+    if (debug_rate != app->last_debug_rate_hz) {
+        app->last_debug_rate_hz = debug_rate;
+        anv_rate_sched_set_rate(&app->debug_sched, debug_rate, now_ms);
     }
 
     if (anv_rate_sched_due(&app->telem_sched, now_ms)) {
         send_telemetry(app);
+    }
+    if (debug_rate != 0u && anv_rate_sched_due(&app->debug_sched, now_ms)) {
+        send_debug_pages(app);
     }
 }

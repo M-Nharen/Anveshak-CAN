@@ -10,6 +10,8 @@ add_library(anveshak_can_core STATIC
   src/anv_nmt.c
   src/anv_estop.c
   src/anv_heartbeat.c
+  src/anv_debug.c
+  src/anv_diag.c
   src/anv_node.c
   ${ROVER_GENERATED_DIR}/rover.c
 )
