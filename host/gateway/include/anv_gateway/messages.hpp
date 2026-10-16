@@ -120,6 +120,16 @@ struct ServiceMsg {
   uint16_t param_index = 0;
   uint32_t value_raw = 0;
 };
+// Automatic node IDs (docs/architecture.md "Automatic node IDs"). MAC is the board's 48-bit
+// factory MAC as one integer, least-significant byte first on the wire.
+struct NodeIdRequestMsg { uint64_t mac = 0; uint8_t node_type = 0; uint8_t hw_target = 0; };
+struct NodeIdAssignMsg {
+  uint8_t host = 0;  // sender: 1 Orin, 2 RPi, 3 tool
+  uint64_t mac = 0;
+  uint8_t assigned_id = 0;
+  uint8_t flags = 0;
+};
+
 struct BootMsg {  // raw bytes: B4/A3 define the ISO-TP layer on top
   uint8_t node_id = 0;
   bool node_to_host = false;
@@ -129,7 +139,8 @@ struct BootMsg {  // raw bytes: B4/A3 define the ISO-TP layer on top
 // Keep this order in sync with kMessageNames in decoder.cpp.
 using Message = std::variant<std::monostate, EstopMsg, EstopReleaseMsg, SyncMsg, NmtMsg, DebugLevelMsg, HostHbMsg,
                              LeadRequestMsg, DriveCmdMsg, DriveFbAMsg, DriveFbBMsg, DriveTelem0Msg, DriveTelem1Msg,
-                             DriveDebugMsg, NodeHbMsg, NodeEventMsg, FpgaSensorsMsg, ServiceMsg, BootMsg>;
+                             DriveDebugMsg, NodeHbMsg, NodeEventMsg, FpgaSensorsMsg, ServiceMsg, BootMsg,
+                             NodeIdRequestMsg, NodeIdAssignMsg>;
 
 // --- Scaled views (units from the DBC comments) ---
 inline double speed_rad_s(int16_t raw) { return raw * 0.01; }

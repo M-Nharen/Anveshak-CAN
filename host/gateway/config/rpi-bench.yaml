@@ -1,0 +1,11 @@
+# Bench setup: one RPi (Waveshare 2-CH CAN HAT, can0) and auto-addressed ESP32 nodes.
+# See host/tools/rpi-bench/README.md.
+interface: can0
+host_id: 2          # RPi
+tie_break: 2
+auto_takeover: false
+rt_priority: 50
+cpu_affinity: 3     # keep the CAN threads off the core the desktop and Chromium use most
+bridge_socket: /run/anveshak/gateway.sock
+allocate_ids: true
+node_id_table: /var/lib/anveshak/node_ids.txt

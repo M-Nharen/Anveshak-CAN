@@ -57,6 +57,14 @@ static inline uint8_t pack_left_shift_u32(
     return (uint8_t)((uint8_t)(value << shift) & mask);
 }
 
+static inline uint8_t pack_left_shift_u64(
+    uint64_t value,
+    uint8_t shift,
+    uint8_t mask)
+{
+    return (uint8_t)((uint8_t)(value << shift) & mask);
+}
+
 static inline uint8_t pack_right_shift_u16(
     uint16_t value,
     uint8_t shift,
@@ -67,6 +75,14 @@ static inline uint8_t pack_right_shift_u16(
 
 static inline uint8_t pack_right_shift_u32(
     uint32_t value,
+    uint8_t shift,
+    uint8_t mask)
+{
+    return (uint8_t)((uint8_t)(value >> shift) & mask);
+}
+
+static inline uint8_t pack_right_shift_u64(
+    uint64_t value,
     uint8_t shift,
     uint8_t mask)
 {
@@ -87,6 +103,14 @@ static inline uint32_t unpack_left_shift_u32(
     uint8_t mask)
 {
     return (uint32_t)((uint32_t)(value & mask) << shift);
+}
+
+static inline uint64_t unpack_left_shift_u64(
+    uint8_t value,
+    uint8_t shift,
+    uint8_t mask)
+{
+    return (uint64_t)((uint64_t)(value & mask) << shift);
 }
 
 static inline uint8_t unpack_right_shift_u8(
@@ -111,6 +135,14 @@ static inline uint32_t unpack_right_shift_u32(
     uint8_t mask)
 {
     return (uint32_t)((uint32_t)(value & mask) >> shift);
+}
+
+static inline uint64_t unpack_right_shift_u64(
+    uint8_t value,
+    uint8_t shift,
+    uint8_t mask)
+{
+    return (uint64_t)((uint64_t)(value & mask) >> shift);
 }
 
 int rover_estop_pack(
@@ -13986,4 +14018,344 @@ bool rover_fpga_node_hb_uptime_s_is_in_range(uint16_t value)
 bool rover_fpga_node_hb_uptime_s_is_in_phys_range(double value)
 {
     return ((value >= 0.0) && (value <= 65535.0));
+}
+
+int rover_node_id_request_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_request_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u64(src_p->mac, 0u, 0xffu);
+    dst_p[1] |= pack_right_shift_u64(src_p->mac, 8u, 0xffu);
+    dst_p[2] |= pack_right_shift_u64(src_p->mac, 16u, 0xffu);
+    dst_p[3] |= pack_right_shift_u64(src_p->mac, 24u, 0xffu);
+    dst_p[4] |= pack_right_shift_u64(src_p->mac, 32u, 0xffu);
+    dst_p[5] |= pack_right_shift_u64(src_p->mac, 40u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->node_type, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->hw_target, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_node_id_request_unpack(
+    struct rover_node_id_request_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->mac = unpack_right_shift_u64(src_p[0], 0u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[1], 8u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[2], 16u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[3], 24u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[4], 32u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[5], 40u, 0xffu);
+    dst_p->node_type = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->hw_target = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_node_id_request_init(struct rover_node_id_request_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_node_id_request_t));
+
+    return 0;
+}
+
+bool rover_node_id_request_mac_is_in_range(uint64_t value)
+{
+    return (value <= 281474976710655ull);
+}
+
+bool rover_node_id_request_mac_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 281474976710655.0));
+}
+
+bool rover_node_id_request_node_type_is_in_range(uint8_t value)
+{
+    return (value <= 5u);
+}
+
+bool rover_node_id_request_node_type_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 5.0));
+}
+
+bool rover_node_id_request_hw_target_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_node_id_request_hw_target_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+int rover_node_id_assign_orin_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_assign_orin_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u64(src_p->mac, 0u, 0xffu);
+    dst_p[1] |= pack_right_shift_u64(src_p->mac, 8u, 0xffu);
+    dst_p[2] |= pack_right_shift_u64(src_p->mac, 16u, 0xffu);
+    dst_p[3] |= pack_right_shift_u64(src_p->mac, 24u, 0xffu);
+    dst_p[4] |= pack_right_shift_u64(src_p->mac, 32u, 0xffu);
+    dst_p[5] |= pack_right_shift_u64(src_p->mac, 40u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->assigned_id, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->flags, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_node_id_assign_orin_unpack(
+    struct rover_node_id_assign_orin_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->mac = unpack_right_shift_u64(src_p[0], 0u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[1], 8u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[2], 16u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[3], 24u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[4], 32u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[5], 40u, 0xffu);
+    dst_p->assigned_id = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->flags = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_node_id_assign_orin_init(struct rover_node_id_assign_orin_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_node_id_assign_orin_t));
+
+    return 0;
+}
+
+bool rover_node_id_assign_orin_mac_is_in_range(uint64_t value)
+{
+    return (value <= 281474976710655ull);
+}
+
+bool rover_node_id_assign_orin_mac_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 281474976710655.0));
+}
+
+bool rover_node_id_assign_orin_assigned_id_is_in_range(uint8_t value)
+{
+    return (value <= 31u);
+}
+
+bool rover_node_id_assign_orin_assigned_id_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 31.0));
+}
+
+bool rover_node_id_assign_orin_flags_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_node_id_assign_orin_flags_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+int rover_node_id_assign_rpi_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_assign_rpi_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u64(src_p->mac, 0u, 0xffu);
+    dst_p[1] |= pack_right_shift_u64(src_p->mac, 8u, 0xffu);
+    dst_p[2] |= pack_right_shift_u64(src_p->mac, 16u, 0xffu);
+    dst_p[3] |= pack_right_shift_u64(src_p->mac, 24u, 0xffu);
+    dst_p[4] |= pack_right_shift_u64(src_p->mac, 32u, 0xffu);
+    dst_p[5] |= pack_right_shift_u64(src_p->mac, 40u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->assigned_id, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->flags, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_node_id_assign_rpi_unpack(
+    struct rover_node_id_assign_rpi_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->mac = unpack_right_shift_u64(src_p[0], 0u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[1], 8u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[2], 16u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[3], 24u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[4], 32u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[5], 40u, 0xffu);
+    dst_p->assigned_id = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->flags = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_node_id_assign_rpi_init(struct rover_node_id_assign_rpi_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_node_id_assign_rpi_t));
+
+    return 0;
+}
+
+bool rover_node_id_assign_rpi_mac_is_in_range(uint64_t value)
+{
+    return (value <= 281474976710655ull);
+}
+
+bool rover_node_id_assign_rpi_mac_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 281474976710655.0));
+}
+
+bool rover_node_id_assign_rpi_assigned_id_is_in_range(uint8_t value)
+{
+    return (value <= 31u);
+}
+
+bool rover_node_id_assign_rpi_assigned_id_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 31.0));
+}
+
+bool rover_node_id_assign_rpi_flags_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_node_id_assign_rpi_flags_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+int rover_node_id_assign_tool_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_assign_tool_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u64(src_p->mac, 0u, 0xffu);
+    dst_p[1] |= pack_right_shift_u64(src_p->mac, 8u, 0xffu);
+    dst_p[2] |= pack_right_shift_u64(src_p->mac, 16u, 0xffu);
+    dst_p[3] |= pack_right_shift_u64(src_p->mac, 24u, 0xffu);
+    dst_p[4] |= pack_right_shift_u64(src_p->mac, 32u, 0xffu);
+    dst_p[5] |= pack_right_shift_u64(src_p->mac, 40u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->assigned_id, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->flags, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_node_id_assign_tool_unpack(
+    struct rover_node_id_assign_tool_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->mac = unpack_right_shift_u64(src_p[0], 0u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[1], 8u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[2], 16u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[3], 24u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[4], 32u, 0xffu);
+    dst_p->mac |= unpack_left_shift_u64(src_p[5], 40u, 0xffu);
+    dst_p->assigned_id = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->flags = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_node_id_assign_tool_init(struct rover_node_id_assign_tool_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_node_id_assign_tool_t));
+
+    return 0;
+}
+
+bool rover_node_id_assign_tool_mac_is_in_range(uint64_t value)
+{
+    return (value <= 281474976710655ull);
+}
+
+bool rover_node_id_assign_tool_mac_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 281474976710655.0));
+}
+
+bool rover_node_id_assign_tool_assigned_id_is_in_range(uint8_t value)
+{
+    return (value <= 31u);
+}
+
+bool rover_node_id_assign_tool_assigned_id_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 31.0));
+}
+
+bool rover_node_id_assign_tool_flags_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_node_id_assign_tool_flags_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
 }

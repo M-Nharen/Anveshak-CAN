@@ -1,5 +1,7 @@
 #include "anv_gateway/encoder.hpp"
 
+#include "anv_gateway/protocol.hpp"
+#include "ids.h"
 #include "rover.h"
 
 namespace anv::gw {
@@ -161,7 +163,10 @@ CanFrame make_node_hb(const NodeHbMsg& hb) {
     case 8: ANV_NODE_HB(drive5, ROVER_DRIVE5_NODE_HB_FRAME_ID, ROVER_DRIVE5_NODE_HB_LENGTH);
     case 9: ANV_NODE_HB(drive6, ROVER_DRIVE6_NODE_HB_FRAME_ID, ROVER_DRIVE6_NODE_HB_LENGTH);
     case 20: ANV_NODE_HB(fpga, ROVER_FPGA_NODE_HB_FRAME_ID, ROVER_FPGA_NODE_HB_LENGTH);
-    default: return invalid_frame();
+    default:
+      // Auxiliary nodes share the drive heartbeat layout (as anv_node.c packs it), at their own ID.
+      if (hb.node_id < kFirstAuxNode || hb.node_id > kLastAuxNode) return invalid_frame();
+      ANV_NODE_HB(drive1, ROVER_CAN_ID(ROVER_CLASS_HEARTBEAT, hb.node_id, 0), ROVER_DRIVE1_NODE_HB_LENGTH);
   }
 #undef ANV_NODE_HB
 }
@@ -191,6 +196,52 @@ CanFrame make_drive_fb_a(const DriveFbAMsg& fb) {
     default: return invalid_frame();
   }
 #undef ANV_FB_A
+}
+
+CanFrame make_node_id_assign(const NodeIdAssignMsg& msg) {
+  CanFrame f;
+#define ANV_ASSIGN(NAME, ID, LEN)                   \
+  do {                                              \
+    struct rover_node_id_assign_##NAME##_t s;       \
+    rover_node_id_assign_##NAME##_init(&s);         \
+    s.mac = msg.mac;                                \
+    s.assigned_id = msg.assigned_id;                \
+    s.flags = msg.flags;                            \
+    ANV_PACK(f, ID, LEN, rover_node_id_assign_##NAME##_pack, s); \
+    return f;                                       \
+  } while (0)
+  switch (msg.host) {
+    case 1: ANV_ASSIGN(orin, ROVER_NODE_ID_ASSIGN_ORIN_FRAME_ID, ROVER_NODE_ID_ASSIGN_ORIN_LENGTH);
+    case 2: ANV_ASSIGN(rpi, ROVER_NODE_ID_ASSIGN_RPI_FRAME_ID, ROVER_NODE_ID_ASSIGN_RPI_LENGTH);
+    case 3: ANV_ASSIGN(tool, ROVER_NODE_ID_ASSIGN_TOOL_FRAME_ID, ROVER_NODE_ID_ASSIGN_TOOL_LENGTH);
+    default: return invalid_frame();
+  }
+#undef ANV_ASSIGN
+}
+
+CanFrame make_node_id_request(const NodeIdRequestMsg& msg) {
+  CanFrame f;
+  struct rover_node_id_request_t s;
+  rover_node_id_request_init(&s);
+  s.mac = msg.mac;
+  s.node_type = msg.node_type;
+  s.hw_target = msg.hw_target;
+  ANV_PACK(f, ROVER_NODE_ID_REQUEST_FRAME_ID, ROVER_NODE_ID_REQUEST_LENGTH, rover_node_id_request_pack, s);
+  return f;
+}
+
+CanFrame make_aux_sensors(uint8_t node_id, bool second_half, const std::array<uint16_t, 4>& values) {
+  if (node_id < kFirstAuxNode || node_id > kLastAuxNode || node_id == kNodeFpga) return invalid_frame();
+  CanFrame f;
+  struct rover_fpga_sensors_a_t s;
+  rover_fpga_sensors_a_init(&s);
+  s.sensor_1 = values[0];
+  s.sensor_2 = values[1];
+  s.sensor_3 = values[2];
+  s.sensor_4 = values[3];
+  ANV_PACK(f, ROVER_CAN_ID(ROVER_CLASS_SENSOR, node_id, second_half ? 1 : 0), ROVER_FPGA_SENSORS_A_LENGTH,
+           rover_fpga_sensors_a_pack, s);
+  return f;
 }
 
 }  // namespace anv::gw

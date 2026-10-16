@@ -162,6 +162,10 @@ extern "C" {
 #define ROVER_FPGA_SENSORS_B_FRAME_ID (0x4a1u)
 #define ROVER_FPGA_NODE_EVENT_FRAME_ID (0x3a7u)
 #define ROVER_FPGA_NODE_HB_FRAME_ID (0x6a0u)
+#define ROVER_NODE_ID_REQUEST_FRAME_ID (0x5fbu)
+#define ROVER_NODE_ID_ASSIGN_ORIN_FRAME_ID (0x5f8u)
+#define ROVER_NODE_ID_ASSIGN_RPI_FRAME_ID (0x5f9u)
+#define ROVER_NODE_ID_ASSIGN_TOOL_FRAME_ID (0x5fau)
 
 /* Frame lengths in bytes. */
 #define ROVER_ESTOP_LENGTH (1u)
@@ -281,6 +285,10 @@ extern "C" {
 #define ROVER_FPGA_SENSORS_B_LENGTH (8u)
 #define ROVER_FPGA_NODE_EVENT_LENGTH (8u)
 #define ROVER_FPGA_NODE_HB_LENGTH (8u)
+#define ROVER_NODE_ID_REQUEST_LENGTH (8u)
+#define ROVER_NODE_ID_ASSIGN_ORIN_LENGTH (8u)
+#define ROVER_NODE_ID_ASSIGN_RPI_LENGTH (8u)
+#define ROVER_NODE_ID_ASSIGN_TOOL_LENGTH (8u)
 
 /* Extended or standard frame types. */
 #define ROVER_ESTOP_IS_EXTENDED (0)
@@ -400,6 +408,10 @@ extern "C" {
 #define ROVER_FPGA_SENSORS_B_IS_EXTENDED (0)
 #define ROVER_FPGA_NODE_EVENT_IS_EXTENDED (0)
 #define ROVER_FPGA_NODE_HB_IS_EXTENDED (0)
+#define ROVER_NODE_ID_REQUEST_IS_EXTENDED (0)
+#define ROVER_NODE_ID_ASSIGN_ORIN_IS_EXTENDED (0)
+#define ROVER_NODE_ID_ASSIGN_RPI_IS_EXTENDED (0)
+#define ROVER_NODE_ID_ASSIGN_TOOL_IS_EXTENDED (0)
 
 /* Frame cycle times in milliseconds. */
 #define ROVER_SYNC_CYCLE_TIME_MS (20u)
@@ -822,6 +834,15 @@ extern "C" {
 #define ROVER_FPGA_NODE_HB_NODE_TYPE_FPGA_CHOICE (4u)
 #define ROVER_FPGA_NODE_HB_NODE_TYPE_POWER_CHOICE (5u)
 
+#define ROVER_NODE_ID_REQUEST_NODE_TYPE_DRIVE_CHOICE (1u)
+#define ROVER_NODE_ID_REQUEST_NODE_TYPE_ARM_CHOICE (2u)
+#define ROVER_NODE_ID_REQUEST_NODE_TYPE_SCIENCE_CHOICE (3u)
+#define ROVER_NODE_ID_REQUEST_NODE_TYPE_FPGA_CHOICE (4u)
+#define ROVER_NODE_ID_REQUEST_NODE_TYPE_POWER_CHOICE (5u)
+
+#define ROVER_NODE_ID_REQUEST_HW_TARGET_ESP32_CHOICE (0u)
+#define ROVER_NODE_ID_REQUEST_HW_TARGET_ESP32_S3_CHOICE (1u)
+
 /* Frame Names. */
 #define ROVER_ESTOP_NAME "ESTOP"
 #define ROVER_ESTOP_RELEASE_NAME "ESTOP_RELEASE"
@@ -940,6 +961,10 @@ extern "C" {
 #define ROVER_FPGA_SENSORS_B_NAME "FPGA_SENSORS_B"
 #define ROVER_FPGA_NODE_EVENT_NAME "FPGA_NODE_EVENT"
 #define ROVER_FPGA_NODE_HB_NAME "FPGA_NODE_HB"
+#define ROVER_NODE_ID_REQUEST_NAME "NODE_ID_REQUEST"
+#define ROVER_NODE_ID_ASSIGN_ORIN_NAME "NODE_ID_ASSIGN_ORIN"
+#define ROVER_NODE_ID_ASSIGN_RPI_NAME "NODE_ID_ASSIGN_RPI"
+#define ROVER_NODE_ID_ASSIGN_TOOL_NAME "NODE_ID_ASSIGN_TOOL"
 
 /* Signal Names. */
 #define ROVER_ESTOP_MAGIC_NAME "MAGIC"
@@ -1561,6 +1586,18 @@ extern "C" {
 #define ROVER_FPGA_NODE_HB_DEBUG_LEVEL_NAME "DEBUG_LEVEL"
 #define ROVER_FPGA_NODE_HB_FW_BUILD_ID_NAME "FW_BUILD_ID"
 #define ROVER_FPGA_NODE_HB_UPTIME_S_NAME "UPTIME_S"
+#define ROVER_NODE_ID_REQUEST_MAC_NAME "MAC"
+#define ROVER_NODE_ID_REQUEST_NODE_TYPE_NAME "NODE_TYPE"
+#define ROVER_NODE_ID_REQUEST_HW_TARGET_NAME "HW_TARGET"
+#define ROVER_NODE_ID_ASSIGN_ORIN_MAC_NAME "MAC"
+#define ROVER_NODE_ID_ASSIGN_ORIN_ASSIGNED_ID_NAME "ASSIGNED_ID"
+#define ROVER_NODE_ID_ASSIGN_ORIN_FLAGS_NAME "FLAGS"
+#define ROVER_NODE_ID_ASSIGN_RPI_MAC_NAME "MAC"
+#define ROVER_NODE_ID_ASSIGN_RPI_ASSIGNED_ID_NAME "ASSIGNED_ID"
+#define ROVER_NODE_ID_ASSIGN_RPI_FLAGS_NAME "FLAGS"
+#define ROVER_NODE_ID_ASSIGN_TOOL_MAC_NAME "MAC"
+#define ROVER_NODE_ID_ASSIGN_TOOL_ASSIGNED_ID_NAME "ASSIGNED_ID"
+#define ROVER_NODE_ID_ASSIGN_TOOL_FLAGS_NAME "FLAGS"
 
 /**
  * Signals in message ESTOP.
@@ -6946,6 +6983,126 @@ struct rover_fpga_node_hb_t {
      * Offset: 0
      */
     uint16_t uptime_s;
+};
+
+/**
+ * Signals in message NODE_ID_REQUEST.
+ *
+ * Unconfigured node (no stored node ID) asks for one. MAC is the board's factory MAC, least-significant byte first. HW_TARGET: 0 ESP32, 1 ESP32-S3. Sent with random jitter; no heartbeats until an ID is assigned.
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_node_id_request_t {
+    /**
+     * Range: 0..281474976710655 (0..281474976710655 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint64_t mac;
+
+    /**
+     * Range: 0..5 (0..5 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t node_type;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t hw_target;
+};
+
+/**
+ * Signals in message NODE_ID_ASSIGN_ORIN.
+ *
+ * ORIN assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_node_id_assign_orin_t {
+    /**
+     * Range: 0..281474976710655 (0..281474976710655 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint64_t mac;
+
+    /**
+     * Range: 0..31 (0..31 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t assigned_id;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t flags;
+};
+
+/**
+ * Signals in message NODE_ID_ASSIGN_RPI.
+ *
+ * RPI assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_node_id_assign_rpi_t {
+    /**
+     * Range: 0..281474976710655 (0..281474976710655 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint64_t mac;
+
+    /**
+     * Range: 0..31 (0..31 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t assigned_id;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t flags;
+};
+
+/**
+ * Signals in message NODE_ID_ASSIGN_TOOL.
+ *
+ * TOOL assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_node_id_assign_tool_t {
+    /**
+     * Range: 0..281474976710655 (0..281474976710655 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint64_t mac;
+
+    /**
+     * Range: 0..31 (0..31 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t assigned_id;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t flags;
 };
 
 /**
@@ -24894,6 +25051,418 @@ bool rover_fpga_node_hb_uptime_s_is_in_range(uint16_t value);
  * @return true if in range, false otherwise.
  */
 bool rover_fpga_node_hb_uptime_s_is_in_phys_range(double value);
+
+/**
+ * Pack message NODE_ID_REQUEST.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_node_id_request_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_request_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message NODE_ID_REQUEST.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_node_id_request_unpack(
+    struct rover_node_id_request_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from NODE_ID_REQUEST.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_node_id_request_init(struct rover_node_id_request_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_request_mac_is_in_range(uint64_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_request_mac_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_request_node_type_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_request_node_type_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_request_hw_target_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_request_hw_target_is_in_phys_range(double value);
+
+/**
+ * Pack message NODE_ID_ASSIGN_ORIN.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_node_id_assign_orin_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_assign_orin_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message NODE_ID_ASSIGN_ORIN.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_node_id_assign_orin_unpack(
+    struct rover_node_id_assign_orin_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from NODE_ID_ASSIGN_ORIN.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_node_id_assign_orin_init(struct rover_node_id_assign_orin_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_orin_mac_is_in_range(uint64_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_orin_mac_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_orin_assigned_id_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_orin_assigned_id_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_orin_flags_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_orin_flags_is_in_phys_range(double value);
+
+/**
+ * Pack message NODE_ID_ASSIGN_RPI.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_node_id_assign_rpi_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_assign_rpi_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message NODE_ID_ASSIGN_RPI.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_node_id_assign_rpi_unpack(
+    struct rover_node_id_assign_rpi_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from NODE_ID_ASSIGN_RPI.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_node_id_assign_rpi_init(struct rover_node_id_assign_rpi_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_rpi_mac_is_in_range(uint64_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_rpi_mac_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_rpi_assigned_id_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_rpi_assigned_id_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_rpi_flags_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_rpi_flags_is_in_phys_range(double value);
+
+/**
+ * Pack message NODE_ID_ASSIGN_TOOL.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_node_id_assign_tool_pack(
+    uint8_t *dst_p,
+    const struct rover_node_id_assign_tool_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message NODE_ID_ASSIGN_TOOL.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_node_id_assign_tool_unpack(
+    struct rover_node_id_assign_tool_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from NODE_ID_ASSIGN_TOOL.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_node_id_assign_tool_init(struct rover_node_id_assign_tool_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_tool_mac_is_in_range(uint64_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_tool_mac_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_tool_assigned_id_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_tool_assigned_id_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_tool_flags_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_node_id_assign_tool_flags_is_in_phys_range(double value);
 
 
 #ifdef __cplusplus

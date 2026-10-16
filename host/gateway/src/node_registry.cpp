@@ -50,7 +50,7 @@ double NodeRegistry::expected_hz(uint16_t id, uint8_t debug_level) {
   const uint8_t sub = ROVER_ID_SUB(id);
   switch (cls) {
     case ROVER_CLASS_FEEDBACK: return 50.0;
-    case ROVER_CLASS_SENSOR: return 50.0;
+    case ROVER_CLASS_SENSOR: return ROVER_ID_NODE(id) == kNodeFpga ? 50.0 : 10.0;  // aux nodes: 10 Hz
     case ROVER_CLASS_HEARTBEAT: return 10.0;
     case ROVER_CLASS_TELEMETRY:
       if (sub == 0 || sub == 1) return debug_level == 0 ? 1.0 : 10.0;  // 1 Hz at debug level 0
@@ -64,6 +64,7 @@ void NodeRegistry::touch(uint8_t node_id, int64_t rx_ns, std::vector<GatewayEven
   NodeInfo& n = entry(node_id);
   n.last_seen_ns = rx_ns;
   n.seen = true;
+  ++n.rx_count;
   if (!n.alive) {
     n.alive = true;
     GatewayEvent e;

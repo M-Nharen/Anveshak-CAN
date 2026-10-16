@@ -433,4 +433,68 @@ TEST(status_text_lists_every_node_and_the_role) {
   CHECK(s.find("FPGA") != std::string::npos);
 }
 
+TEST(a_lone_rpi_assigns_ids_to_unconfigured_boards_and_shows_them) {
+  FakeBusHub hub;
+  Recorder rec(hub);
+  Host rpi(hub, 2);
+  Tool board(hub);  // an unconfigured ESP32 asking for an ID
+  sleep_ms(30);
+  board.send(make_node_id_request({0xA4CF12345678ull, 3, kHwTargetEsp32S3}));
+  CHECK(wait_until([&] { return rec.count_id(0x5F9) == 1; }, 500));  // RPi's own assign ID
+  const auto assigns = rec.of<NodeIdAssignMsg>();
+  CHECK_EQ(assigns.size(), 1u);
+  if (!assigns.empty()) {
+    CHECK(assigns[0].second.mac == 0xA4CF12345678ull);
+    CHECK_EQ(assigns[0].second.assigned_id, 16);
+  }
+  CHECK(rpi.saw(EventType::NodeIdAssigned, 16));
+
+  // The board then starts as node 16: the registry finds it and the state carries its MAC.
+  FakeNode node(hub, 16);
+  auto n16 = [&] {
+    for (const auto& n : rpi.gw->state().nodes)
+      if (n.node_id == 16) return n;
+    return NodeInfo{};
+  };
+  CHECK(wait_until([&] { return n16().alive; }, 500));
+  CHECK(rpi.saw(EventType::NodeAlive, 16));
+  CHECK(n16().mac == 0xA4CF12345678ull);
+  CHECK_EQ(n16().hw_target, kHwTargetEsp32S3);
+  CHECK(rpi.gw->state().id_allocator);
+
+  // A second board gets the next ID; the first board asking again keeps 16.
+  board.send(make_node_id_request({0x246F28000001ull, 3, kHwTargetEsp32}));
+  board.send(make_node_id_request({0xA4CF12345678ull, 3, kHwTargetEsp32S3}));
+  CHECK(wait_until([&] { return rec.count_id(0x5F9) == 3; }, 500));
+  const auto all = rec.of<NodeIdAssignMsg>();
+  if (all.size() == 3) {
+    CHECK_EQ(all[1].second.assigned_id, 17);
+    CHECK_EQ(all[2].second.assigned_id, 16);
+  }
+  CHECK(rpi.gw->forget_node(17) == CmdResult::Ok);
+  CHECK(rpi.gw->forget_node(17) == CmdResult::BadArgument);
+}
+
+TEST(only_one_host_answers_id_requests_the_master_or_else_the_lowest_tie_break) {
+  FakeBusHub hub;
+  Recorder rec(hub);
+  Host orin(hub, 1);
+  Host rpi(hub, 2);
+  Tool board(hub);
+  sleep_ms(150);  // both hosts hear each other's heartbeats
+
+  board.send(make_node_id_request({0x1, 3, kHwTargetEsp32}));
+  CHECK(wait_until([&] { return rec.count_id(0x5F8) == 1; }, 500));  // Orin: lower tie-break
+  sleep_ms(50);
+  CHECK_EQ(rec.count_id(0x5F9), 0u);
+
+  // Once the RPi leads, it answers and the Orin stays quiet.
+  rpi.gw->request_lead(2);
+  CHECK(wait_until([&] { return orin.gw->state().believed_master == 2; }, 500));
+  board.send(make_node_id_request({0x2, 3, kHwTargetEsp32}));
+  CHECK(wait_until([&] { return rec.count_id(0x5F9) == 1; }, 500));
+  sleep_ms(50);
+  CHECK_EQ(rec.count_id(0x5F8), 1u);
+}
+
 int main() { return t::run_all(); }

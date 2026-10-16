@@ -22,6 +22,25 @@ constexpr size_t kMaxLine = 64 * 1024;
 
 std::string b(bool v) { return v ? "true" : "false"; }
 
+const char* hw_target_name(uint8_t t) {
+  switch (t) {
+    case kHwTargetEsp32: return "ESP32";
+    case kHwTargetEsp32S3: return "ESP32-S3";
+    default: return "";
+  }
+}
+
+std::string event_json(const GatewayEvent& e, int64_t now_ns) {
+  using json::num;
+  std::string o = "{\"type\":" + json::quote(event_type_name(e.type)) + ",\"time_ns\":" + std::to_string(e.time_ns) +
+                  ",\"age_ms\":" + num((now_ns - e.time_ns) / 1e6) + ",\"node_id\":" + std::to_string(e.node_id) +
+                  ",\"name\":" + json::quote(node_name(e.node_id));
+  if (e.type == EventType::RoleChanged)
+    o += ",\"role\":" + std::to_string(e.role) + ",\"term\":" + std::to_string(e.term);
+  if (e.mac != 0) o += ",\"mac\":" + json::quote(IdAllocator::mac_to_string(e.mac));
+  return o + "}";
+}
+
 std::string node_json(const NodeInfo& n, int64_t now_ns) {
   using json::num;
   using json::quote;
@@ -33,7 +52,16 @@ std::string node_json(const NodeInfo& n, int64_t now_ns) {
                   ",\"fw_build_id\":" + std::to_string(n.fw_build_id) + ",\"uptime_s\":" + std::to_string(n.uptime_s) +
                   ",\"reboot_count\":" + std::to_string(n.reboot_count) + ",\"tec\":" + std::to_string(n.tec) +
                   ",\"rec\":" + std::to_string(n.rec) + ",\"can_error_state\":" + std::to_string(n.can_error_state) +
-                  ",\"bootloader_running\":" + b(n.bootloader_running) + ",\"debug_level\":" + std::to_string(n.debug_level);
+                  ",\"bootloader_running\":" + b(n.bootloader_running) + ",\"debug_level\":" + std::to_string(n.debug_level) +
+                  ",\"rx_count\":" + std::to_string(n.rx_count);
+  if (n.mac != 0)
+    o += ",\"mac\":" + quote(IdAllocator::mac_to_string(n.mac)) + ",\"hw_target\":" + std::to_string(n.hw_target) +
+         ",\"hw_name\":" + quote(hw_target_name(n.hw_target));
+  if (n.has_sensors) {
+    o += ",\"sensors\":[";
+    for (size_t i = 0; i < n.sensors.size(); ++i) o += (i ? "," : "") + std::to_string(n.sensors[i]);
+    o += "]";
+  }
   if (n.has_fb_a)
     o += ",\"fb\":{\"state\":" + std::to_string(n.fb_a.state) + ",\"fault_flags\":" + std::to_string(n.fb_a.fault_flags) +
          ",\"speed_a\":" + num(speed_rad_s(n.fb_a.speed_a)) + ",\"speed_b\":" + num(speed_rad_s(n.fb_a.speed_b)) +
@@ -67,10 +95,20 @@ std::string state_to_json(const GatewayState& s) {
          ",\"term\":" + std::to_string(s.peers[i].term) + "}";
   }
   o += "],\"nodes\":[";
+  size_t online = 0;
   for (size_t i = 0; i < s.nodes.size(); ++i) {
     if (i) o += ",";
     o += node_json(s.nodes[i], s.time_ns);
+    if (s.nodes[i].alive) ++online;
   }
+  o += "],\"online_count\":" + std::to_string(online) + ",\"id_allocator\":" + b(s.id_allocator) + ",\"id_table\":[";
+  for (size_t i = 0; i < s.id_table.size(); ++i) {
+    const IdAssignment& a = s.id_table[i];
+    o += std::string(i ? "," : "") + "{\"mac\":" + json::quote(IdAllocator::mac_to_string(a.mac)) +
+         ",\"node_id\":" + std::to_string(a.node_id) + ",\"hw_target\":" + std::to_string(a.hw_target) + "}";
+  }
+  o += "],\"events\":[";
+  for (size_t i = 0; i < s.recent_events.size(); ++i) o += (i ? "," : "") + event_json(s.recent_events[i], s.time_ns);
   return o + "]}";
 }
 
@@ -176,6 +214,11 @@ std::string Bridge::handle(const std::string& line) {
     const json::Value* h = req.get("host");
     if (!h || h->type != json::Value::Number || (h->num != 1 && h->num != 2)) return fail("host must be 1 or 2");
     return result(gw_.request_lead(static_cast<uint8_t>(h->num)));
+  }
+  if (cmd == "forget_node") {
+    const json::Value* n = req.get("node_id");
+    if (!n || n->type != json::Value::Number || n->num < 1 || n->num > 31) return fail("node_id must be 1-31");
+    return result(gw_.forget_node(static_cast<uint8_t>(n->num)));
   }
   if (cmd == "set_targets") {
     const json::Value* w = req.get("wheels");

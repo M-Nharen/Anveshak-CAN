@@ -11,6 +11,7 @@ const char* event_type_name(EventType t) {
     case EventType::NodeRebooted: return "NODE_REBOOTED";
     case EventType::EstopSeen: return "ESTOP_SEEN";
     case EventType::EstopReleased: return "ESTOP_RELEASED";
+    case EventType::NodeIdAssigned: return "NODE_ID_ASSIGNED";
   }
   return "?";
 }

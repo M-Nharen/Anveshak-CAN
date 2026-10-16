@@ -251,7 +251,9 @@ TEST(debug_event_service_boot_and_fpga_decode) {
 
 TEST(every_dbc_message_decodes_to_a_named_type) {
   // Walks every ID the layout rule allows and checks that exactly the IDs the DBC defines decode.
-  // The DBC has: 5 network singles, 3 host HB, 3 lead requests, 6 drives x 17, FPGA x 4.
+  // The DBC has: 5 network singles, 3 host HB, 3 lead requests, 6 drives x 17, FPGA x 4, and the
+  // 4 ID-allocation messages. On top, auxiliary nodes 16-30 except the FPGA (14 nodes) decode with
+  // the shared layouts: heartbeat + 2 sensor frames each.
   size_t decoded = 0;
   for (uint16_t id = 0; id < 0x800; ++id) {
     CanFrame f;
@@ -263,7 +265,62 @@ TEST(every_dbc_message_decodes_to_a_named_type) {
       CHECK(message_name(d.msg) != "UNKNOWN");
     }
   }
-  CHECK_EQ(decoded, 5u + 3u + 3u + 6u * 17u + 4u);
+  CHECK_EQ(decoded, 5u + 3u + 3u + 6u * 17u + 4u + 4u + 14u * 3u);
+}
+
+TEST(auxiliary_nodes_decode_with_the_shared_heartbeat_and_sensor_layouts) {
+  NodeHbMsg hb;
+  hb.node_id = 17;
+  hb.state = 1;
+  hb.node_type = 3;
+  hb.protocol_version = 1;
+  hb.fw_build_id = 0xBEEF;
+  hb.uptime_s = 42;
+  const CanFrame f = make_node_hb(hb);
+  CHECK_EQ(f.id, 0x688);
+  const NodeHbMsg m = as<NodeHbMsg>(must_decode(f));
+  CHECK_EQ(m.node_id, 17);
+  CHECK_EQ(m.node_type, 3);
+  CHECK_EQ(m.fw_build_id, 0xBEEF);
+  CHECK_EQ(m.uptime_s, 42);
+
+  const CanFrame sf = make_aux_sensors(18, true, {1, 2, 3, 4});
+  CHECK_EQ(sf.id, 0x491);
+  const FpgaSensorsMsg sm = as<FpgaSensorsMsg>(must_decode(sf));
+  CHECK(sm.second_half);
+  CHECK_EQ(sm.values[3], 4);
+
+  // Unconfigured boards (31) send no heartbeat, and host slots never decode through the generic path.
+  NodeHbMsg bad = hb;
+  bad.node_id = kNodeUnconfigured;
+  CHECK_EQ(make_node_hb(bad).id, kInvalidFrameId);
+  CanFrame host_slot = f;
+  host_slot.id = 0x610;  // node 2 (RPi) heartbeat slot: not a node
+  Decoded d;
+  CHECK(!decode_frame(host_slot, d));
+}
+
+TEST(id_request_and_assign_round_trip_with_a_48_bit_mac) {
+  const uint64_t mac = 0xA4CF12345678ull;
+  const CanFrame rq = make_node_id_request({mac, 3, kHwTargetEsp32S3});
+  CHECK_EQ(rq.id, 0x5FB);
+  const NodeIdRequestMsg r = as<NodeIdRequestMsg>(must_decode(rq));
+  CHECK(r.mac == mac);
+  CHECK_EQ(r.hw_target, kHwTargetEsp32S3);
+  CHECK_EQ(rq.data[0], 0x78);  // least-significant byte first
+
+  NodeIdAssignMsg a;
+  a.host = 2;
+  a.mac = mac;
+  a.assigned_id = 16;
+  const CanFrame af = make_node_id_assign(a);
+  CHECK_EQ(af.id, 0x5F9);
+  const NodeIdAssignMsg am = as<NodeIdAssignMsg>(must_decode(af));
+  CHECK_EQ(am.host, 2);
+  CHECK(am.mac == mac);
+  CHECK_EQ(am.assigned_id, 16);
+  a.host = 7;
+  CHECK_EQ(make_node_id_assign(a).id, kInvalidFrameId);
 }
 
 TEST(short_unknown_and_error_frames_are_rejected) {

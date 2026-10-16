@@ -372,6 +372,24 @@ These classes have more than one possible sender, so the sub-type identifies the
 
 Drive node 2 (ID 5) uses the same messages at 0x128, 0x228 and so on: add 8 for each node.
 
+**Automatic node IDs**
+
+Boards without an ID switch (the ESP32 bench nodes, flashed with identical firmware) get their ID from a host instead:
+
+| ID | Name | Sender | Payload |
+| --- | --- | --- | --- |
+| 0x5FB | NODE\_ID\_REQUEST | Unconfigured board | MAC (48 bit, the 6 MAC bytes as one integer, sent least-significant byte first), node type, HW target (0 ESP32, 1 ESP32-S3) |
+| 0x5F8 / 0x5F9 / 0x5FA | NODE\_ID\_ASSIGN from Orin / RPi / tool | Allocator host | MAC, assigned ID, flags |
+
+These are the unused sub-types of node 31's service slot, so no other ID moves.
+
+1. A board with no ID saved in flash stays silent for a random 100–600 ms (seeded from its MAC), then sends NODE\_ID\_REQUEST about every 500 ms with jitter. It sends no heartbeat until it has an ID, so ID 31 is never shared by two heartbeats.
+2. The **allocator** answers: the master, or when no master is alive the live host with the lowest tie-break. Exactly one host answers, so a lone RPi on the bench addresses boards before anyone picks a leader. An ID is an address, not a command, so this doesn't touch the master-only rules for actuation.
+3. The allocator keeps a MAC → ID table on disk (`node_id_table` in the gateway config). The same board always gets the same ID back. New boards get the lowest free ID from 16–19, then 22–30, skipping the FPGA (20), the power node (21) and any ID already heard on the bus.
+4. The board checks the MAC, saves the ID and starts as a normal node. Two boards asking at the same instant collide; the jitter separates them, and a few error frames during allocation are expected.
+
+Boards using automatic IDs send the shared NODE\_HB layout at 0x600 + 8 × ID, and the generic 4 × u16 sensor layout at 0x400/0x401 + 8 × ID. The gateway decodes both for any node 16–30.
+
 ## Message catalog
 
 Every frame on the bus is listed here with its exact layout. All multi-byte fields are **little-endian** (native on STM32, ESP32, Orin and RPi, so no byte swapping), and values are **scaled integers**, not floats, so 8 bytes hold as much as possible. The DBC file (end of this section) is the authoritative copy; this section explains it.

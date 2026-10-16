@@ -887,6 +887,26 @@ BO_ 1696 FPGA_NODE_HB: 8 FPGA
   SG_ FW_BUILD_ID : 32|16@1+ (1,0) [0|65535] "" ORIN,RPI,TOOL
   SG_ UPTIME_S : 48|16@1+ (1,0) [0|65535] "s" ORIN,RPI,TOOL
 
+BO_ 1531 NODE_ID_REQUEST: 8 ANY
+  SG_ MAC : 0|48@1+ (1,0) [0|281474976710655] "" ORIN,RPI,TOOL
+  SG_ NODE_TYPE : 48|8@1+ (1,0) [0|5] "" ORIN,RPI,TOOL
+  SG_ HW_TARGET : 56|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+
+BO_ 1528 NODE_ID_ASSIGN_ORIN: 8 ORIN
+  SG_ MAC : 0|48@1+ (1,0) [0|281474976710655] "" ANY
+  SG_ ASSIGNED_ID : 48|8@1+ (1,0) [0|31] "" ANY
+  SG_ FLAGS : 56|8@1+ (1,0) [0|255] "" ANY
+
+BO_ 1529 NODE_ID_ASSIGN_RPI: 8 RPI
+  SG_ MAC : 0|48@1+ (1,0) [0|281474976710655] "" ANY
+  SG_ ASSIGNED_ID : 48|8@1+ (1,0) [0|31] "" ANY
+  SG_ FLAGS : 56|8@1+ (1,0) [0|255] "" ANY
+
+BO_ 1530 NODE_ID_ASSIGN_TOOL: 8 TOOL
+  SG_ MAC : 0|48@1+ (1,0) [0|281474976710655] "" ANY
+  SG_ ASSIGNED_ID : 48|8@1+ (1,0) [0|31] "" ANY
+  SG_ FLAGS : 56|8@1+ (1,0) [0|255] "" ANY
+
 BO_TX_BU_ 1 : ORIN,RPI,TOOL;
 BO_TX_BU_ 2 : ORIN,RPI,TOOL;
 BO_TX_BU_ 3 : ORIN,RPI,TOOL;
@@ -906,6 +926,10 @@ BO_TX_BU_ 1864 : ORIN,RPI,TOOL;
 
 CM_ "Anveshak rover CAN bus definitions. Classic CAN 2.0A, 11-bit IDs, 500 kbps, 80% sample point. ID = (class << 8) | (node << 3) | sub. See docs/architecture.md for the full design.";
 CM_ BU_ ANY "Placeholder transmitter for ESTOP, which any node may send with an identical, fixed payload.";
+CM_ BO_ 1531 "Unconfigured node (no stored node ID) asks for one. MAC is the board's factory MAC, least-significant byte first. HW_TARGET: 0 ESP32, 1 ESP32-S3. Sent with random jitter; no heartbeats until an ID is assigned.";
+CM_ BO_ 1528 "ORIN assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).";
+CM_ BO_ 1529 "RPI assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).";
+CM_ BO_ 1530 "TOOL assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).";
 CM_ BO_ 0 "Stop everything now. Byte 0 is always fixed at 0xE5 so simultaneous senders produce bit-identical frames.";
 CM_ BO_ 1 "Clears the E-stop latch after operator action. Master only.";
 CM_ BO_ 2 "Start of each 20 ms control cycle. Master only.";
@@ -1144,5 +1168,7 @@ VAL_ 1356 STATUS 0 "OK" 1 "BAD_INDEX" 2 "OUT_OF_RANGE" 3 "NOT_ALLOWED_WHILE_ARME
 VAL_ 1357 STATUS 0 "OK" 1 "BAD_INDEX" 2 "OUT_OF_RANGE" 3 "NOT_ALLOWED_WHILE_ARMED" 4 "FLASH_ERROR";
 VAL_ 1358 STATUS 0 "OK" 1 "BAD_INDEX" 2 "OUT_OF_RANGE" 3 "NOT_ALLOWED_WHILE_ARMED" 4 "FLASH_ERROR";
 VAL_ 1696 STATE 0 "BOOT" 1 "DISARMED" 2 "ARMED" 3 "FAULT" 4 "ESTOP" 5 "BOOTLOADER";
+VAL_ 1531 NODE_TYPE 1 "DRIVE" 2 "ARM" 3 "SCIENCE" 4 "FPGA" 5 "POWER";
+VAL_ 1531 HW_TARGET 0 "ESP32" 1 "ESP32S3";
 VAL_ 1696 NODE_TYPE 1 "DRIVE" 2 "ARM" 3 "SCIENCE" 4 "FPGA" 5 "POWER";
 VAL_ 935 SEVERITY 0 "INFO" 1 "WARNING" 2 "ERROR" 3 "CRITICAL";

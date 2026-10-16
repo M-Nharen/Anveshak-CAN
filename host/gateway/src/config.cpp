@@ -77,6 +77,10 @@ bool parse_config_text(const std::string& text, GatewayConfig& out, std::string*
     } else if (key == "cpu_affinity") {
       if (!parse_int(value, n) || n < -1 || n > 1023) return fail(error, line_no, "cpu_affinity must be -1 or a core number");
       cfg.cpu_affinity = static_cast<int>(n);
+    } else if (key == "allocate_ids") {
+      if (!parse_bool(value, cfg.allocate_ids)) return fail(error, line_no, "allocate_ids must be true or false");
+    } else if (key == "node_id_table") {
+      cfg.node_id_table = value;  // empty value = in memory only
     } else {
       return fail(error, line_no, "unknown key '" + key + "'");
     }

@@ -31,7 +31,8 @@ set(ANV_GATEWAY_SOURCES
   src/status.cpp
   src/gateway.cpp
   src/events.cpp
-  src/bridge.cpp)
+  src/bridge.cpp
+  src/id_allocator.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND ANV_GATEWAY_SOURCES src/socketcan_bus.cpp)
 endif()

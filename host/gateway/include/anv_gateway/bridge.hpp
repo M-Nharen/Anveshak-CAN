@@ -6,6 +6,7 @@
 //   {"id":3,"cmd":"arm"} | "disarm" | "estop" | "release_estop"
 //   {"id":4,"cmd":"request_lead","host":1}
 //   {"id":5,"cmd":"ping"}
+//   {"id":6,"cmd":"forget_node","node_id":17}          (free an auto-assigned ID in the table)
 //
 // Command replies are {"id":N,"ok":true|false,"code":<CmdResult>,"result":"<text>"}. It only wraps the
 // public Gateway API, so every rule (master-only commands, E-stop latch, 100 ms target hold)

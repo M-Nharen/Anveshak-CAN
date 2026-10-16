@@ -21,6 +21,11 @@ struct NodeInfo {
   bool seen = false;   // at least one frame since the gateway started
   bool alive = false;  // a frame within the last 300 ms
   int64_t last_seen_ns = 0;
+  uint64_t rx_count = 0;  // frames from this node since the gateway started (activity indicator)
+
+  // From the ID allocator's table, for auto-addressed boards; mac 0 = not auto-addressed.
+  uint64_t mac = 0;
+  uint8_t hw_target = 0xFF;
 
   bool has_hb = false;  // a NODE_HB has arrived (uptime and build fields are valid)
   uint8_t state = 0;  // NodeState, from the latest NODE_HB or DRIVE_FB_A

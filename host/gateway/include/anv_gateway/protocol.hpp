@@ -27,6 +27,15 @@ constexpr uint8_t kNodeRpi = 2;
 constexpr uint8_t kNodeTool = 3;
 constexpr uint8_t kNodeFirstDrive = 4;  // drive n has node ID 3 + n
 constexpr uint8_t kNodeFpga = 20;
+constexpr uint8_t kNodePower = 21;          // reserved: power distribution / battery monitor
+constexpr uint8_t kFirstAuxNode = 16;       // science / auxiliary nodes and spares
+constexpr uint8_t kLastAuxNode = 30;
+constexpr uint8_t kNodeUnconfigured = 31;  // a board with no ID yet
+
+// HW_TARGET in NODE_ID_REQUEST
+constexpr uint8_t kHwTargetEsp32 = 0;
+constexpr uint8_t kHwTargetEsp32S3 = 1;
+constexpr uint8_t kHwTargetUnknown = 0xFF;
 
 constexpr uint8_t drive_node_id(uint8_t drive) { return static_cast<uint8_t>(3 + drive); }
 

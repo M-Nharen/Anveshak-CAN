@@ -20,6 +20,7 @@
 #include "anv_gateway/can_bus.hpp"
 #include "anv_gateway/config.hpp"
 #include "anv_gateway/events.hpp"
+#include "anv_gateway/id_allocator.hpp"
 #include "anv_gateway/leadership.hpp"
 #include "anv_gateway/node_registry.hpp"
 #include "anv_gateway/protocol.hpp"
@@ -63,7 +64,12 @@ struct GatewayState {
   BusStats bus;
   std::vector<NodeInfo> nodes;
   std::vector<RateInfo> rates;
+  bool id_allocator = false;                // this host currently answers NODE_ID_REQUEST
+  std::vector<IdAssignment> id_table;       // every board the allocator knows
+  std::vector<GatewayEvent> recent_events;  // newest last, at most kRecentEvents
 };
+
+constexpr size_t kRecentEvents = 50;
 
 using EventCallback = std::function<void(const GatewayEvent&)>;
 using LogCallback = std::function<void(const std::string&)>;
@@ -91,6 +97,9 @@ class Gateway {
   // --- Any role ---
   CmdResult estop();                       // ESTOP frame, latched until released
   CmdResult request_lead(uint8_t host_id); // LEAD_REQUEST for host 1 (Orin) or 2 (RPi)
+  // Frees node_id in the ID table so the pool can reuse it (the board itself keeps its stored ID
+  // until it is wiped). BadArgument if no board holds that ID.
+  CmdResult forget_node(uint8_t node_id);
 
   GatewayState state() const;
 
@@ -107,6 +116,9 @@ class Gateway {
   void emit(const std::vector<GatewayEvent>& events);
   bool send(const CanFrame& f);
   void note_role_change_locked(Role old_role, uint16_t old_term);
+  bool is_id_allocator_locked(int64_t now_ns) const;
+  void on_id_request_locked(const NodeIdRequestMsg& m, int64_t now_ns, std::vector<GatewayEvent>& events,
+                            std::vector<CanFrame>& out);
   void apply_realtime(int priority_offset);
   void log(const std::string& msg);
 
@@ -120,6 +132,8 @@ class Gateway {
   mutable std::mutex mu_;  // guards everything below until the atomics
   LeaderElection election_;
   NodeRegistry registry_;
+  IdAllocator allocator_;
+  std::vector<GatewayEvent> recent_events_;
   struct TargetSlot {
     WheelTarget target;
     int64_t set_ns = 0;  // 0 = never set

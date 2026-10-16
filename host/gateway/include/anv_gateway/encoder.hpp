@@ -19,7 +19,11 @@ CanFrame make_lead_request(const LeadRequestMsg& req);
 CanFrame make_drive_cmd(const DriveCmdMsg& cmd);
 
 // Packers for node-side frames, used by tests and by anything that simulates a node in C++.
-CanFrame make_node_hb(const NodeHbMsg& hb);  // node_id 4-9 (drive) or 20 (FPGA)
+CanFrame make_node_hb(const NodeHbMsg& hb);  // node_id 4-9 (drive), 20 (FPGA) or an auxiliary node 16-30
+// host 1-3 picks the sender's own ID (0x5F8 / 0x5F9 / 0x5FA); other values return the empty frame.
+CanFrame make_node_id_assign(const NodeIdAssignMsg& msg);
+CanFrame make_node_id_request(const NodeIdRequestMsg& msg);  // what an unconfigured board sends
+CanFrame make_aux_sensors(uint8_t node_id, bool second_half, const std::array<uint16_t, 4>& values);
 CanFrame make_drive_fb_a(const DriveFbAMsg& fb);
 
 constexpr uint16_t kInvalidFrameId = 0xFFFF;

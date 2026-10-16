@@ -13,6 +13,7 @@ enum class EventType : uint8_t {
   NodeRebooted,   // node_id's uptime went backwards
   EstopSeen,      // an E-stop frame was seen (or sent by this host); node_id = 0 if unknown sender
   EstopReleased,  // ESTOP_RELEASE seen or sent
+  NodeIdAssigned, // this host gave node_id to an unconfigured board (NODE_ID_ASSIGN sent)
 };
 
 struct GatewayEvent {
@@ -21,6 +22,7 @@ struct GatewayEvent {
   uint8_t node_id = 0;
   uint16_t term = 0;
   uint8_t role = 0;  // Role value, for RoleChanged
+  uint64_t mac = 0;  // board MAC, for NodeIdAssigned
 };
 
 const char* event_type_name(EventType t);

@@ -59,7 +59,7 @@ const char* cmd_result_name(CmdResult r) {
 }
 
 Gateway::Gateway(const GatewayConfig& cfg, std::unique_ptr<ICanBus> bus)
-    : cfg_(cfg), bus_(std::move(bus)), election_(election_config(cfg)) {}
+    : cfg_(cfg), bus_(std::move(bus)), election_(election_config(cfg)), allocator_(cfg.node_id_table) {}
 
 Gateway::~Gateway() { stop(); }
 
@@ -67,10 +67,13 @@ bool Gateway::start() {
   bool expected = false;
   if (!running_.compare_exchange_strong(expected, true)) return false;
   start_ns_ = mono_ns();
+  std::string table_error;
   {
     std::lock_guard<std::mutex> lk(mu_);
     election_.start(start_ns_);  // standby: a booting host never claims the lead by itself
+    if (!allocator_.load(&table_error)) allocator_ = IdAllocator(cfg_.node_id_table);  // start empty
   }
+  if (!table_error.empty()) log("warning: node ID table not loaded (" + table_error + "); starting empty");
   rx_thread_ = std::thread([this] { rx_loop(); });
   control_thread_ = std::thread([this] { control_loop(); });
   return true;
@@ -113,6 +116,12 @@ void Gateway::unsubscribe(int id) {
 
 void Gateway::emit(const std::vector<GatewayEvent>& events) {
   if (events.empty()) return;
+  {
+    std::lock_guard<std::mutex> lk(mu_);
+    recent_events_.insert(recent_events_.end(), events.begin(), events.end());
+    if (recent_events_.size() > kRecentEvents)
+      recent_events_.erase(recent_events_.begin(), recent_events_.end() - kRecentEvents);
+  }
   std::vector<std::pair<int, EventCallback>> subs;
   {
     std::lock_guard<std::mutex> lk(sub_mu_);
@@ -162,6 +171,53 @@ void Gateway::note_role_change_locked(Role old_role, uint16_t old_term) {
   if (election_.role() != old_role || (election_.is_master() && election_.term() != old_term)) armed_ = false;
 }
 
+// The master hands out node IDs. With no live master (a lone RPi on the bench, or before anyone
+// chose a leader), the live host with the lowest tie-break does, so boards get addresses without
+// an operator. Only one host ever answers, keeping one sender per assignment.
+bool Gateway::is_id_allocator_locked(int64_t now_ns) const {
+  if (!cfg_.allocate_ids) return false;
+  if (election_.is_master()) return true;
+  for (uint8_t h = 1; h <= kNodeTool; ++h) {
+    if (h == cfg_.host_id) continue;
+    const PeerHost& p = election_.peer(h);
+    if (!p.seen || now_ns - p.last_seen_ns > kLeaderLostNs) continue;
+    if (p.role == static_cast<uint8_t>(Role::Master)) return false;
+    if (p.tie_break < cfg_.effective_tie_break()) return false;
+  }
+  return true;
+}
+
+void Gateway::on_id_request_locked(const NodeIdRequestMsg& m, int64_t now_ns, std::vector<GatewayEvent>& events,
+                                   std::vector<CanFrame>& out) {
+  if (!is_id_allocator_locked(now_ns)) return;
+  // Skip IDs a board is already using: a board that kept an old ID from another table must not
+  // end up sharing it with a newcomer.
+  const auto nodes = registry_.snapshot(now_ns);
+  auto in_use = [&](uint8_t id) {
+    for (const NodeInfo& n : nodes)
+      if (n.node_id == id && n.seen) return true;
+    return false;
+  };
+  std::string save_error;
+  const uint8_t id = allocator_.assign(m.mac, m.hw_target, in_use, &save_error);
+  if (!save_error.empty()) log("warning: node ID table not saved: " + save_error);
+  if (id == 0) {
+    log("node ID pool exhausted; board " + IdAllocator::mac_to_string(m.mac) + " left unconfigured");
+    return;
+  }
+  NodeIdAssignMsg a;
+  a.host = cfg_.host_id;
+  a.mac = m.mac;
+  a.assigned_id = id;
+  out.push_back(make_node_id_assign(a));
+  GatewayEvent e;
+  e.type = EventType::NodeIdAssigned;
+  e.time_ns = now_ns;
+  e.node_id = id;
+  e.mac = m.mac;
+  events.push_back(e);
+}
+
 // ---------------------------------------------------------------------------------------------
 // RX path
 // ---------------------------------------------------------------------------------------------
@@ -192,6 +248,7 @@ void Gateway::handle_frame(const CanFrame& f) {
   }
 
   std::vector<GatewayEvent> events;
+  std::vector<CanFrame> out;
   {
     std::lock_guard<std::mutex> lk(mu_);
     const Role old_role = election_.role();
@@ -220,12 +277,15 @@ void Gateway::handle_frame(const CanFrame& f) {
             e.time_ns = d.rx_ns;
             e.node_id = m.master_node_id;
             events.push_back(e);
+          } else if constexpr (std::is_same_v<T, NodeIdRequestMsg>) {
+            on_id_request_locked(m, d.rx_ns, events, out);
           }
         },
         d.msg);
     registry_.on_decoded(d, events);
     note_role_change_locked(old_role, old_term);
   }
+  for (const CanFrame& f : out) send(f);
   emit(events);
 }
 
@@ -420,6 +480,17 @@ CmdResult Gateway::request_lead(uint8_t host_id) {
   return ok ? CmdResult::Ok : CmdResult::SendFailed;
 }
 
+CmdResult Gateway::forget_node(uint8_t node_id) {
+  std::string save_error;
+  bool found;
+  {
+    std::lock_guard<std::mutex> lk(mu_);
+    found = allocator_.forget_node(node_id, &save_error);
+  }
+  if (!save_error.empty()) log("warning: node ID table not saved: " + save_error);
+  return found ? CmdResult::Ok : CmdResult::BadArgument;
+}
+
 GatewayState Gateway::state() const {
   GatewayState s;
   const int64_t now = mono_ns();
@@ -440,6 +511,15 @@ GatewayState Gateway::state() const {
     s.bus.rx_fps = rx_fps_;
     s.nodes = registry_.snapshot(now);
     s.rates = registry_.rates();
+    for (NodeInfo& n : s.nodes) {
+      if (const IdAssignment* a = allocator_.find_by_node(n.node_id)) {
+        n.mac = a->mac;
+        n.hw_target = a->hw_target;
+      }
+    }
+    s.id_allocator = is_id_allocator_locked(now);
+    s.id_table = allocator_.table();
+    s.recent_events = recent_events_;
   }
   s.bus.rx_frames = rx_frames_.load();
   s.bus.tx_frames = tx_frames_.load();

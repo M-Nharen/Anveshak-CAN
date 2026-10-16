@@ -15,8 +15,12 @@ TEST(parses_all_keys_comments_and_quotes) {
       "auto_takeover: yes\n"
       "rt_priority: 40\n"
       "cpu_affinity: 3\n"
-      "bridge_socket: /tmp/gw.sock\n";
+      "bridge_socket: /tmp/gw.sock\n"
+      "allocate_ids: off\n"
+      "node_id_table: /var/lib/anveshak/node_ids.txt\n";
   CHECK(parse_config_text(text, c, &err));
+  CHECK(!c.allocate_ids);
+  CHECK(c.node_id_table == "/var/lib/anveshak/node_ids.txt");
   CHECK(c.interface_name == "vcan0");
   CHECK_EQ(c.host_id, 2);
   CHECK_EQ(c.tie_break, 2);

@@ -6,3 +6,5 @@ auto_takeover: false  # true: a standby claims the lead 250 ms after the master 
 rt_priority: 50     # SCHED_FIFO priority for the CAN threads (needs root / CAP_SYS_NICE); 0 = off
 cpu_affinity: -1    # pin the CAN threads to this core (useful on the RPi); -1 = don't pin
 bridge_socket: ""   # e.g. /run/anveshak/gateway.sock to let the dashboard backend talk to this gateway
+allocate_ids: true  # hand out node IDs to unconfigured boards while this host is the allocator
+node_id_table: ""   # e.g. /var/lib/anveshak/node_ids.txt: remembers which board (MAC) got which ID

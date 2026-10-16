@@ -15,6 +15,8 @@ struct GatewayConfig {
   int rt_priority = 50;     // SCHED_FIFO priority for the CAN threads; 0 = leave scheduling alone
   std::string bridge_socket;  // Unix socket for the dashboard backend; empty = no bridge
   int cpu_affinity = -1;    // pin the CAN threads to this core (RPi); -1 = no pinning
+  bool allocate_ids = true;   // answer NODE_ID_REQUEST while this host is the allocator
+  std::string node_id_table;  // file remembering MAC -> node ID; empty = in memory only
 
   uint8_t effective_tie_break() const { return tie_break != 0 ? tie_break : host_id; }
 };
