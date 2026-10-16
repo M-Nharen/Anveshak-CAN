@@ -1,0 +1,21 @@
+# The dashboard backend + built frontend on port 8080. @USER@, @PREFIX@ and @REPO@ are filled in
+# by install.sh. /etc/anveshak/dashboard.env holds ANV_DASH_PASSWORD.
+[Unit]
+Description=Anveshak dashboard
+Wants=anv-gateway.service
+After=anv-gateway.service
+
+[Service]
+User=@USER@
+WorkingDirectory=@REPO@/dashboard/backend
+Environment=ANV_DASH_GATEWAY_SOCKET=/run/anveshak/gateway.sock
+Environment=ANV_DASH_STATIC=@REPO@/dashboard/frontend/dist
+# The touch screen on this RPi counts as logged in; browsers on other machines still need the password.
+Environment=ANV_DASH_TRUST_LOCALHOST=1
+EnvironmentFile=-/etc/anveshak/dashboard.env
+ExecStart=@PREFIX@/dashboard-venv/bin/python -m anv_dashboard
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

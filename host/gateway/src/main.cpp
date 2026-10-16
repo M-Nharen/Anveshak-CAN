@@ -87,7 +87,10 @@ int main(int argc, char** argv) {
   Gateway gw(cfg, std::move(bus));
   gw.set_logger([](const std::string& m) { std::fprintf(stderr, "gateway: %s\n", m.c_str()); });
   gw.subscribe([](const GatewayEvent& e) {
-    std::printf("event %s node %u term %u role %u\n", event_type_name(e.type), e.node_id, e.term, e.role);
+    if (e.type == EventType::NodeIdAssigned)
+      std::printf("event %s node %u mac %s\n", event_type_name(e.type), e.node_id, IdAllocator::mac_to_string(e.mac).c_str());
+    else
+      std::printf("event %s node %u term %u role %u\n", event_type_name(e.type), e.node_id, e.term, e.role);
     std::fflush(stdout);
   });
 

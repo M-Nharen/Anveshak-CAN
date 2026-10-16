@@ -1,0 +1,18 @@
+# Brings can0 (Waveshare 2-CH CAN HAT, MCP2515) up at 500 kbps, 80 % sample point, with automatic
+# bus-off restart after 100 ms.
+[Unit]
+Description=Anveshak CAN interface can0 (500 kbps)
+BindsTo=sys-subsystem-net-devices-can0.device
+After=sys-subsystem-net-devices-can0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/ip link set can0 down
+ExecStart=/usr/sbin/ip link set can0 type can bitrate 500000 sample-point 0.8 restart-ms 100
+ExecStart=/usr/sbin/ip link set can0 txqueuelen 1000
+ExecStart=/usr/sbin/ip link set can0 up
+ExecStop=/usr/sbin/ip link set can0 down
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# The CAN gateway. @USER@ and @PREFIX@ are filled in by install.sh.
+[Unit]
+Description=Anveshak CAN gateway
+Requires=anv-can0.service
+After=anv-can0.service
+
+[Service]
+User=@USER@
+ExecStart=@PREFIX@/bin/anv_can_gateway --config /etc/anveshak/gateway.yaml --status-interval 0
+RuntimeDirectory=anveshak
+RuntimeDirectoryMode=0750
+StateDirectory=anveshak
+# SCHED_FIFO for the CAN threads (rt_priority in the config) without running as root.
+AmbientCapabilities=CAP_SYS_NICE
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Anveshak bench screen
+Exec=@PREFIX@/bin/anv-kiosk.sh
+X-GNOME-Autostart-enabled=true
