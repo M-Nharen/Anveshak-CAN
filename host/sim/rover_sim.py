@@ -1,4 +1,5 @@
-"""A CAN-bus simulator that pretends to be the rover's 6 drive nodes and the FPGA.
+"""A CAN-bus simulator that pretends to be the rover's 6 drive nodes and the FPGA, and optionally
+auto-addressed ESP32 bench nodes.
 
 Lets both the firmware and host sides develop and test against something that behaves
 like the real bus (docs/architecture.md "Node firmware", "Bring-up plan") without any
@@ -8,6 +9,7 @@ DBC changes.
 from __future__ import annotations
 
 import math
+import random
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +41,13 @@ NMT_DISARM = 2
 NMT_RESET = 3
 NMT_ENTER_BOOTLOADER = 4
 NMT_FAULT_RESET = 5
+
+# Automatic node IDs (docs/architecture.md "Automatic node IDs")
+NODE_ID_REQUEST_ID = 0x5FB
+NODE_ID_ASSIGN_IDS = (0x5F8, 0x5F9, 0x5FA)  # from Orin, RPi, tool
+HW_TARGET_ESP32 = 0
+HW_TARGET_ESP32S3 = 1
+ESP_SENSOR_PERIOD_S = 0.100  # bench nodes send their 4 values at 10 Hz
 
 FAULT_OVERCURRENT_A = 1 << 0
 FAULT_OVERCURRENT_B = 1 << 1
@@ -274,14 +283,119 @@ class FpgaNodeSim:
             self.next_hb_time = now + HEARTBEAT_PERIOD_S
 
 
+@dataclass
+class EspBenchNodeSim:
+    """An ESP32 bench node running firmware/nodes/bench_esp32_arduino: asks for a node ID with its
+    MAC, then sends the shared heartbeat and 4x u16 sensor layouts at its own ID."""
+
+    mac: int
+    db: cantools.database.can.Database
+    hw_target: int = HW_TARGET_ESP32S3
+    node_id: int | None = None  # what the board has saved in NVS; None = unconfigured
+    boot_time: float = field(default_factory=time.monotonic)
+    state: int = STATE_DISARMED
+    dropped: bool = False
+    next_request_time: float = 0.0
+    next_hb_time: float = 0.0
+    next_sensor_time: float = 0.0
+    requests_sent: int = 0
+
+    def __post_init__(self) -> None:
+        self._rng = random.Random(self.mac)  # same jitter per board, like the MAC-seeded firmware
+        self.next_request_time = self.boot_time + 0.1 + self._rng.random() * 0.5
+
+    # -- test controls ------------------------------------------------------
+
+    def drop(self) -> None:
+        self.dropped = True
+
+    def revive(self) -> None:
+        self.dropped = False
+
+    def reboot(self) -> None:
+        self.boot_time = time.monotonic()
+        self.state = STATE_DISARMED
+        self.next_request_time = self.boot_time + 0.1 + self._rng.random() * 0.5
+
+    def forget(self) -> None:
+        """The serial console's `forget`: erase the saved ID and restart."""
+        self.node_id = None
+        self.reboot()
+
+    # -- bus-event handlers -------------------------------------------------
+
+    def on_frame(self, frame: can.Message, now: float) -> None:
+        if self.dropped:
+            return
+        fid = frame.arbitration_id
+        if self.node_id is None:
+            if fid in NODE_ID_ASSIGN_IDS:
+                d = self.db.decode_message(fid, frame.data, decode_choices=False, scaling=False)
+                if d["MAC"] == self.mac and 4 <= d["ASSIGNED_ID"] <= 30:
+                    self.node_id = d["ASSIGNED_ID"]
+                    self.reboot()  # the firmware saves the ID and restarts
+            return
+        if fid == 0x000:
+            self.state = STATE_ESTOP
+        elif fid == 0x001 and self.state == STATE_ESTOP:
+            self.state = STATE_DISARMED
+        elif fid == 0x003:
+            d = self.db.decode_message(fid, frame.data, decode_choices=False, scaling=False)
+            if d["TARGET_NODE"] in (0, self.node_id):
+                if d["COMMAND"] == NMT_RESET:
+                    self.reboot()
+                elif d["COMMAND"] == NMT_DISARM and self.state == STATE_ARMED:
+                    self.state = STATE_DISARMED
+
+    def tick(self, now: float, bus: can.BusABC) -> None:
+        if self.dropped:
+            return
+        if self.node_id is None:
+            if now >= self.next_request_time:
+                msg = self.db.get_message_by_name("NODE_ID_REQUEST")
+                bus.send(can.Message(arbitration_id=msg.frame_id, is_extended_id=False, data=msg.encode(
+                    {"MAC": self.mac, "NODE_TYPE": 3, "HW_TARGET": self.hw_target}, scaling=False)))
+                self.requests_sent += 1
+                self.next_request_time = now + 0.4 + self._rng.random() * 0.2
+            return
+        if now >= self.next_hb_time:
+            # Same layout as every node heartbeat; the DRIVE1 entry is just the DBC's copy of it.
+            msg = self.db.get_message_by_name("DRIVE1_NODE_HB")
+            bus.send(can.Message(arbitration_id=0x600 | (self.node_id << 3), is_extended_id=False, data=msg.encode({
+                "STATE": self.state,
+                "NODE_TYPE": 3,
+                "PROTOCOL_VERSION": 1,
+                "CAN_ERROR_STATE": 0,
+                "BOOTLOADER_RUNNING": 0,
+                "UNSAVED_PARAM_CHANGES": 0,
+                "DEBUG_LEVEL": 0,
+                "FW_BUILD_ID": self.mac & 0xFFFF,
+                "UPTIME_S": min(int(now - self.boot_time), 65535),
+            }, scaling=False)))
+            self.next_hb_time = now + HEARTBEAT_PERIOD_S
+        if now >= self.next_sensor_time:
+            uptime = int(now - self.boot_time)
+            msg = self.db.get_message_by_name("FPGA_SENSORS_A")
+            bus.send(can.Message(arbitration_id=0x400 | (self.node_id << 3), is_extended_id=False, data=msg.encode({
+                "SENSOR_1": 3500 + (uptime % 200),  # 35-37 degC in 0.01 degC
+                "SENSOR_2": 280,                     # free heap, KiB
+                "SENSOR_3": 0,
+                "SENSOR_4": 0,
+            }, scaling=False)))
+            self.next_sensor_time = now + ESP_SENSOR_PERIOD_S
+
+
 class Simulator:
     """Owns the bus, every simulated node, and the receive/dispatch loop."""
 
-    def __init__(self, bus: can.BusABC, db: cantools.database.can.Database | None = None):
+    def __init__(self, bus: can.BusABC, db: cantools.database.can.Database | None = None, *,
+                 drives: bool = True, fpga: bool = True, esp_macs: list[tuple[int, int]] | None = None):
+        """esp_macs: (mac, hw_target) per simulated ESP32 bench node; they start unconfigured."""
         self.bus = bus
         self.db = db or load_db()
-        self.drive_nodes = {n: DriveNodeSim(n, self.db) for n in range(1, 7)}
-        self.fpga = FpgaNodeSim(self.db)
+        self.drive_nodes = {n: DriveNodeSim(n, self.db) for n in range(1, 7)} if drives else {}
+        self.fpga = FpgaNodeSim(self.db) if fpga else None
+        self.esp_nodes = [EspBenchNodeSim(mac, self.db, hw) for mac, hw in (esp_macs or [])]
         self._cmd_id_to_node = {node.id_cmd: node for node in self.drive_nodes.values()}
 
     def inject_drop(self, drive_num: int) -> None:
@@ -292,10 +406,14 @@ class Simulator:
 
     def _all_nodes(self):
         yield from self.drive_nodes.values()
-        yield self.fpga
+        if self.fpga is not None:
+            yield self.fpga
+        yield from self.esp_nodes
 
     def dispatch(self, frame: can.Message, now: float) -> None:
         frame_id = frame.arbitration_id
+        for esp in self.esp_nodes:
+            esp.on_frame(frame, now)
         if frame_id == 0x000:
             for node in self.drive_nodes.values():
                 node.on_estop(now)

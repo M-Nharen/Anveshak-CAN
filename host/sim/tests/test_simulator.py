@@ -17,6 +17,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rover_sim import (
+    HW_TARGET_ESP32,
+    HW_TARGET_ESP32S3,
+    NODE_ID_REQUEST_ID,
     STATE_ARMED,
     STATE_DISARMED,
     STATE_ESTOP,
@@ -213,3 +216,60 @@ def test_fpga_sends_sensor_frames(harness, db):
     pump(sim, 0.05)
     frame = recv_named(client, db, "FPGA_SENSORS_A", timeout=1.0)
     assert frame is not None
+
+
+# -- ESP32 bench nodes (automatic node IDs) ---------------------------------
+
+
+@pytest.fixture
+def bench(db):
+    """A simulator with two unconfigured ESP32 bench nodes and nothing else, plus a client bus."""
+    channel = f"test-{next(_channel_counter)}"
+    sim_bus = can.interface.Bus(interface="virtual", channel=channel, receive_own_messages=False)
+    client_bus = can.interface.Bus(interface="virtual", channel=channel, receive_own_messages=False)
+    sim = Simulator(sim_bus, db, drives=False, fpga=False,
+                    esp_macs=[(0xA4CF12000001, HW_TARGET_ESP32S3), (0x246F28000002, HW_TARGET_ESP32)])
+    yield sim, client_bus
+    sim_bus.shutdown()
+    client_bus.shutdown()
+
+
+def collect(sim, bus, seconds):
+    frames = []
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        sim.step(timeout=0.002)
+        while (f := bus.recv(timeout=0)) is not None:
+            frames.append(f)
+    return frames
+
+
+def test_unconfigured_esp_nodes_ask_for_an_id_and_send_no_heartbeat(bench, db):
+    sim, client = bench
+    frames = collect(sim, client, 1.0)
+    requests = [db.decode_message(f.arbitration_id, f.data, scaling=False, decode_choices=False)
+                for f in frames if f.arbitration_id == NODE_ID_REQUEST_ID]
+    assert {r["MAC"] for r in requests} == {0xA4CF12000001, 0x246F28000002}
+    assert {r["HW_TARGET"] for r in requests} == {HW_TARGET_ESP32, HW_TARGET_ESP32S3}
+    assert not [f for f in frames if (f.arbitration_id >> 8) == 6]  # no heartbeats while unconfigured
+
+
+def test_assigned_esp_node_starts_heartbeats_and_sensors_at_its_id(bench, db):
+    sim, client = bench
+    send(client, db, "NODE_ID_ASSIGN_RPI", {"MAC": 0xA4CF12000001, "ASSIGNED_ID": 16, "FLAGS": 0})
+    send(client, db, "NODE_ID_ASSIGN_RPI", {"MAC": 0x999, "ASSIGNED_ID": 17, "FLAGS": 0})  # not ours
+    frames = collect(sim, client, 0.6)
+    assert sim.esp_nodes[0].node_id == 16
+    assert sim.esp_nodes[1].node_id is None
+    hb = [f for f in frames if f.arbitration_id == 0x680]
+    assert len(hb) >= 4
+    decoded = db.get_message_by_name("DRIVE1_NODE_HB").decode(hb[-1].data, scaling=False, decode_choices=False)
+    assert decoded["NODE_TYPE"] == 3
+    assert decoded["STATE"] == STATE_DISARMED
+    assert [f for f in frames if f.arbitration_id == 0x480]  # sensors at 0x400 + 8 * 16
+
+    sim.esp_nodes[0].drop()
+    assert not [f for f in collect(sim, client, 0.3) if f.arbitration_id == 0x680]
+    sim.esp_nodes[0].forget()
+    sim.esp_nodes[0].revive()
+    assert [f for f in collect(sim, client, 0.8) if f.arbitration_id == NODE_ID_REQUEST_ID]

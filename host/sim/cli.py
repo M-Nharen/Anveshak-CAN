@@ -4,6 +4,7 @@
     python -m host.sim.cli
     python -m host.sim.cli --drop-node 6 --overcurrent 4
     python -m host.sim.cli --interface socketcan --channel vcan0
+    python -m host.sim.cli --interface socketcan --channel vcan0 --bench 4   # 4 ESP32s, nothing else
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from pathlib import Path
 import can
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from rover_sim import Simulator, load_db
+from rover_sim import HW_TARGET_ESP32, HW_TARGET_ESP32S3, Simulator, load_db
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -28,6 +29,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                          help="simulate drive node N (1-6) being offline; may repeat")
     parser.add_argument("--overcurrent", type=int, action="append", default=[], metavar="N",
                          help="inject an overcurrent fault on drive node N (1-6); may repeat")
+    parser.add_argument("--bench", type=int, default=0, metavar="N",
+                         help="simulate the bench instead of the rover: N auto-addressed ESP32 nodes "
+                              "(alternating S3 / WROOM), no drive nodes or FPGA")
     parser.add_argument("--duration", type=float, default=None,
                          help="stop after this many seconds (default: run until interrupted)")
     return parser.parse_args(argv)
@@ -41,7 +45,12 @@ def main(argv: list[str] | None = None) -> int:
         bus_kwargs["bitrate"] = args.bitrate
     bus = can.interface.Bus(**bus_kwargs)
 
-    sim = Simulator(bus, load_db())
+    if args.bench:
+        # Made-up MACs in Espressif's 24:6f:28 range, one per simulated board.
+        macs = [(0x246F28A00000 + i, HW_TARGET_ESP32S3 if i % 2 == 0 else HW_TARGET_ESP32) for i in range(args.bench)]
+        sim = Simulator(bus, load_db(), drives=False, fpga=False, esp_macs=macs)
+    else:
+        sim = Simulator(bus, load_db())
     for n in args.drop_node:
         sim.inject_drop(n)
     for n in args.overcurrent:
