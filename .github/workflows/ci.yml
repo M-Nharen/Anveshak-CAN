@@ -116,6 +116,30 @@ jobs:
           idf.py set-target esp32s3
           idf.py build
 
+  bench-esp32-arduino:
+    name: Bench node sketch (Arduino-ESP32 3.3, WROOM + S3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check src/anv matches firmware/core and firmware/generated
+        run: firmware/nodes/bench_esp32_arduino/sync_core.sh --check
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install the ESP32 Arduino core
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+
+      - name: Compile for the ESP32 (WROOM) and the ESP32-S3
+        run: |
+          for fqbn in esp32:esp32:esp32 esp32:esp32:esp32s3; do
+            arduino-cli compile --fqbn "$fqbn" --warnings all firmware/nodes/bench_esp32_arduino
+          done
+
   # --- Later P0 siblings fill these in; left here so the pipeline shape is visible early. ---
 
   gateway:
