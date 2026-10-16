@@ -26,7 +26,7 @@ from .settings import Settings
 
 log = logging.getLogger("anv_dashboard")
 
-PAGES = ("overview", "nodes", "drive")
+PAGES = ("overview", "nodes", "drive", "bench")
 
 
 @dataclass
@@ -155,6 +155,8 @@ class Hub:
                 )
             elif client.page == "nodes":
                 msg["nodes"] = views.nodes_view(self.state)
+            elif client.page == "bench":
+                msg["bench"] = views.bench_view(self.state)
             elif client.page == "drive":
                 lim = self.control.limits
                 msg["drive"] = {
@@ -173,6 +175,11 @@ class Hub:
     async def serve(self, ws: Any) -> None:
         await ws.accept()
         client = Client(id=f"c{next(self._ids)}", ws=ws)
+        # The RPi's own touch screen: whoever can touch it is standing at the rover, so (only when
+        # configured) a browser on this machine is treated as logged in.
+        peer = getattr(getattr(ws, "client", None), "host", None)
+        if self.settings.trust_localhost and peer in ("127.0.0.1", "::1"):
+            client.authed = True
         self.clients[client.id] = client
         try:
             while True:
@@ -251,6 +258,11 @@ class Hub:
                 if host not in (1, 2):
                     return self._ack(msg, False, "host must be 1 or 2")
                 return self._bridge_ack(msg, await self.bridge.request_lead(host))
+            if kind == "forget_node":
+                node_id = msg.get("node_id")
+                if not isinstance(node_id, int) or not 1 <= node_id <= 31:
+                    return self._ack(msg, False, "node_id must be 1-31")
+                return self._bridge_ack(msg, await self.bridge.forget_node(node_id))
             if kind == "take_control":
                 if self.control.take(client.id):
                     return self._ack(msg, True, "you have manual control")

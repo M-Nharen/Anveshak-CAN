@@ -95,3 +95,28 @@ def test_drive_view_pairs_target_and_measurement():
     gone = make_state()
     gone["nodes"] = []
     assert views.drive_view(gone, [0] * 6)[0]["measured_a"] is None
+
+
+def test_bench_view_lists_heard_nodes_and_recent_events():
+    esp = make_node(16, name="NODE16", hw_name="ESP32-S3", mac="a4:cf:12:34:56:78", sensors=[3550, 280, 9, 7],
+                    rx_count=42)  # fmt: skip
+    gone = make_node(17, name="NODE17", alive=False)
+    never = make_node(4, seen=False, alive=False)
+    events = [
+        {"type": "ROLE_CHANGED", "time_ns": 1, "age_ms": 9000.0, "node_id": 0, "name": "NODE0", "role": 1, "term": 0},
+        {"type": "NODE_ID_ASSIGNED", "time_ns": 2, "age_ms": 5000.0, "node_id": 16, "name": "NODE16",
+         "mac": "a4:cf:12:34:56:78"},
+        {"type": "NODE_MISSING", "time_ns": 3, "age_ms": 1000.0, "node_id": 17, "name": "NODE17"},
+    ]  # fmt: skip
+    b = views.bench_view(make_state(nodes=[never, esp, gone], events=events, id_allocator=True))
+    assert [n["node_id"] for n in b["nodes"]] == [16, 17]  # never-heard drive node left out
+    assert b["online"] == 1 and b["known"] == 2 and b["allocator"]
+    assert b["nodes"][0]["hw"] == "ESP32-S3" and b["nodes"][0]["sensors"] == [3550, 280, 9, 7]
+    assert b["nodes"][1]["health"] == "red"
+    assert [e["text"] for e in b["events"]] == ["NODE17 went missing", "Board a4:cf:12:34:56:78 got node ID 16"]
+    assert b["events"][0]["kind"] == "bad" and b["events"][1]["kind"] == "ok"
+
+
+def test_bench_view_copes_with_an_older_gateway():
+    b = views.bench_view(make_state())  # no events / id_allocator / sensors keys
+    assert b["events"] == [] and not b["allocator"] and b["known"] == 6

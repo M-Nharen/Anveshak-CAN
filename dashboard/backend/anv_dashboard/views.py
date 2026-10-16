@@ -187,3 +187,72 @@ def drive_view(st: dict[str, Any], targets: list[float]) -> list[dict[str, Any]]
             }
         )
     return out
+
+
+EVENT_TEXT = {
+    "NODE_ALIVE": "{name} joined",
+    "NODE_MISSING": "{name} went missing",
+    "NODE_REBOOTED": "{name} rebooted",
+    "NODE_ID_ASSIGNED": "Board {mac} got node ID {node_id}",
+    "LEADER_LOST": "Leader lost",
+    "ROLE_CHANGED": "This host is now {role}",
+    "ESTOP_SEEN": "E-stop",
+    "ESTOP_RELEASED": "E-stop released",
+}
+ROLE_NAMES = {0: "booting", 1: "standby", 2: "master", 3: "observer"}
+EVENT_KIND = {"NODE_ALIVE": "ok", "NODE_ID_ASSIGNED": "ok", "ESTOP_RELEASED": "ok", "NODE_REBOOTED": "warn"}
+
+
+def event_text(e: dict[str, Any]) -> str:
+    fields = {**e, "role": ROLE_NAMES.get(e.get("role", -1), "?"), "mac": e.get("mac", "?")}
+    return EVENT_TEXT.get(e["type"], e["type"]).format(**fields)
+
+
+def bench_view(st: dict[str, Any]) -> dict[str, Any]:
+    """The RPi touch screen: every node heard since the gateway started, and what just happened.
+    Nodes the rover is built with but that never spoke (drive 1-6, FPGA on a bench) are left out."""
+    nodes = []
+    for n in st["nodes"]:
+        if not n["seen"]:
+            continue
+        health, reasons = node_health(n)
+        nodes.append(
+            {
+                "node_id": n["node_id"],
+                "name": n["name"],
+                "hw": n.get("hw_name") or "",
+                "mac": n.get("mac"),
+                "state": NODE_STATES.get(n["state"], str(n["state"])),
+                "alive": n["alive"],
+                "age_ms": None if n["age_ms"] is None else round(n["age_ms"]),
+                "uptime_s": n["uptime_s"] if n["has_hb"] else None,
+                "fw_build_id": n["fw_build_id"] if n["has_hb"] else None,
+                "reboots": n["reboot_count"],
+                "tec": n["tec"],
+                "rec": n["rec"],
+                "sensors": n.get("sensors", [])[:4],
+                "rx_count": n.get("rx_count", 0),
+                "health": health,
+                "reasons": reasons,
+            }
+        )
+    events = [
+        {
+            "key": f"{e['time_ns']}-{e['type']}-{e['node_id']}",
+            "age_s": round(e["age_ms"] / 1000.0, 1),
+            "text": event_text(e),
+            "kind": EVENT_KIND.get(e["type"], "bad" if e["type"] in ("NODE_MISSING", "LEADER_LOST", "ESTOP_SEEN") else "info"),
+        }
+        for e in reversed(st.get("events", []))
+        if e["type"] != "ROLE_CHANGED" or e.get("role") != 1  # standby at start-up is noise
+    ]
+    return {
+        "nodes": nodes,
+        "online": sum(1 for n in nodes if n["alive"]),
+        "known": len(nodes),
+        "allocator": st.get("id_allocator", False),
+        "bus_off": st["bus"]["bus_off"],
+        "rx_fps": round(st["bus"]["rx_fps"]),
+        "error_frames": st["bus"]["error_frames"],
+        "events": events[:12],
+    }

@@ -247,3 +247,41 @@ def test_garbage_messages_do_not_kill_the_connection():
         assert hub.clients
 
     run(main())
+
+
+def test_bench_page_and_forget_node():
+    async def main():
+        hub, bridge, _ = make_hub()
+        ws = await connect(hub, login=False)
+        ws.say(t="page", page="bench")
+        ws.say(t="forget_node", node_id=17, req=1)
+        await settle()
+        assert ws.acks()[-1]["msg"] == "login required"
+        await hub.poll_once()
+        await hub.push_once()
+        assert ws.sent[-1]["page"] == "bench" and len(ws.sent[-1]["bench"]["nodes"]) == 6
+
+        ws2 = await connect(hub)
+        ws2.say(t="forget_node", node_id=17, req=2)
+        ws2.say(t="forget_node", node_id="x", req=3)
+        await settle()
+        assert [a["ok"] for a in ws2.acks()[-2:]] == [True, False]
+        assert bridge.calls == [("forget_node", 17)]
+
+    run(main())
+
+
+def test_localhost_is_trusted_only_when_configured():
+    async def main():
+        clock = Clock()
+        for trust, peer, expect in [(True, "127.0.0.1", True), (True, "192.168.1.9", False),
+                                    (False, "127.0.0.1", False)]:  # fmt: skip
+            hub = Hub(Settings(password="pw", trust_localhost=trust), FakeBridge(), clock=clock)
+            ws = FakeWS(peer=peer)
+            asyncio.create_task(hub.serve(ws))
+            await settle()
+            await hub.poll_once()
+            await hub.push_once()
+            assert ws.sent[-1]["authed"] is expect
+
+    run(main())

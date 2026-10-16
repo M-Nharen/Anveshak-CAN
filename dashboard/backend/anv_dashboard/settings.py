@@ -13,6 +13,8 @@ class Settings:
     # Login password for anything that moves hardware. None = a random one is generated at start.
     password: str | None = None
     static_dir: Path | None = None  # the built frontend; None = API only
+    # Treat browsers on this machine (the RPi's touch screen) as logged in. Off unless asked for.
+    trust_localhost: bool = False
     host: str = "0.0.0.0"
     port: int = 8080
 
@@ -49,6 +51,7 @@ class Settings:
         s.password = e.get("ANV_DASH_PASSWORD") or None
         if e.get("ANV_DASH_STATIC"):
             s.static_dir = Path(e["ANV_DASH_STATIC"])
+        s.trust_localhost = e.get("ANV_DASH_TRUST_LOCALHOST", "").lower() in ("1", "true", "yes", "on")
         s.host = e.get("ANV_DASH_HOST", s.host)
         s.port = int(e.get("ANV_DASH_PORT", s.port))
         s.max_wheel_speed = float(e.get("ANV_DASH_MAX_WHEEL_SPEED", s.max_wheel_speed))

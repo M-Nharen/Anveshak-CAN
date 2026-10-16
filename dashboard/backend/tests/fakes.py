@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from typing import Any
 
 from starlette.websockets import WebSocketDisconnect
@@ -76,6 +77,9 @@ class FakeBridge:
     async def request_lead(self, host: int) -> dict[str, Any]:
         return await self._cmd("request_lead", host)
 
+    async def forget_node(self, node_id: int) -> dict[str, Any]:
+        return await self._cmd("forget_node", node_id)
+
     async def close(self) -> None:
         pass
 
@@ -83,7 +87,8 @@ class FakeBridge:
 class FakeWS:
     """Just enough of a WebSocket for Hub.serve()."""
 
-    def __init__(self) -> None:
+    def __init__(self, peer: str = "203.0.113.5") -> None:
+        self.client = SimpleNamespace(host=peer)  # like starlette's WebSocket.client
         self.inbox: asyncio.Queue[str | None] = asyncio.Queue()
         self.sent: list[dict[str, Any]] = []
         self.accepted = False
