@@ -93,6 +93,65 @@ jobs:
             arduino-cli compile --fqbn "$fqbn" --warnings all firmware/nodes/bench_esp32_arduino
           done
 
+  # v2 libraries (firmware/lib): the Linux unit tests run in the firmware job above. These build the
+  # same folders for the ESP32 the three supported ways: Arduino, ESP-IDF and PlatformIO.
+  lib-esp32-arduino:
+    name: v2 libraries, Arduino (isotp_echo, WROOM + S3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install the ESP32 Arduino core
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+
+      - name: Compile the example for the ESP32 (WROOM) and the ESP32-S3
+        run: |
+          for fqbn in esp32:esp32:esp32 esp32:esp32:esp32s3; do
+            arduino-cli compile --fqbn "$fqbn" --warnings all \
+              --library firmware/lib/anv_link --library firmware/lib/anv_proto \
+              firmware/lib/anv_proto/examples/isotp_echo
+          done
+
+  lib-esp32-idf:
+    name: v2 libraries, ESP-IDF 5.5 components (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.1
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32, esp32s3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: idf.py build
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware/lib/build_checks/idf
+          idf.py -B "build-${{ matrix.target }}" set-target ${{ matrix.target }}
+          idf.py -B "build-${{ matrix.target }}" build
+        shell: bash
+
+  lib-esp32-platformio:
+    name: v2 libraries, PlatformIO (isotp_echo, WROOM + S3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pio run
+        run: |
+          pip install platformio
+          pio run -d firmware/lib/build_checks/platformio
+
   # --- Later P0 siblings fill these in; left here so the pipeline shape is visible early. ---
 
   gateway:

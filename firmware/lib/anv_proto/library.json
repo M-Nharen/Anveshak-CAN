@@ -1,0 +1,9 @@
+{
+  "name": "anv_proto",
+  "version": "0.1.0",
+  "description": "Anveshak rover CAN protocol: 29-bit identifier fields from the generated schema, and ISO-TP transfers.",
+  "repository": {"type": "git", "url": "https://github.com/M-Nharen/Anveshak-CAN"},
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "build": {"srcDir": "src", "includeDir": "src"}
+}
