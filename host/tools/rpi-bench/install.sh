@@ -29,11 +29,11 @@ reboot_needed=0
 
 step() { printf '\n=== %s\n' "$*"; }
 
-step "Packages"
-apt-get update -qq
-apt-get install -y -qq build-essential cmake can-utils python3-venv curl nodejs npm >/dev/null
+step "Packages (the first run downloads a few hundred MB: nodejs/npm pull in many packages)"
+apt-get update
+apt-get install -y build-essential cmake can-utils python3-venv curl nodejs npm
 if ! command -v chromium >/dev/null && ! command -v chromium-browser >/dev/null; then
-  apt-get install -y -qq chromium-browser >/dev/null || apt-get install -y -qq chromium >/dev/null
+  apt-get install -y chromium-browser || apt-get install -y chromium
 fi
 
 step "CAN HAT overlays"
@@ -62,7 +62,7 @@ else
   printf '  %s\n' "${overlays[@]}"
 fi
 
-step "Gateway"
+step "Gateway (rover.c is a large generated file: a few minutes on a Pi, with no output while it compiles)"
 build="$repo/build-gw-rpi"
 sudo -u "$user" cmake -S "$repo/host/gateway" -B "$build" -DCMAKE_BUILD_TYPE=Release -DANV_GATEWAY_TESTS=OFF >/dev/null
 sudo -u "$user" cmake --build "$build" -j"$(nproc)"
@@ -79,8 +79,8 @@ step "Dashboard"
 if [[ ! -x $prefix/dashboard-venv/bin/python ]]; then
   python3 -m venv "$prefix/dashboard-venv"
 fi
-"$prefix/dashboard-venv/bin/pip" install -q -r "$repo/dashboard/backend/requirements.txt"
-(cd "$repo/dashboard/frontend" && sudo -u "$user" npm install --no-audit --no-fund --loglevel=error && sudo -u "$user" npm run build)
+"$prefix/dashboard-venv/bin/pip" install --progress-bar on -r "$repo/dashboard/backend/requirements.txt"
+(cd "$repo/dashboard/frontend" && sudo -u "$user" npm install --no-audit --no-fund && sudo -u "$user" npm run build)
 if [[ ! -f /etc/anveshak/dashboard.env ]]; then
   password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(8))')"
   echo "ANV_DASH_PASSWORD=$password" >/etc/anveshak/dashboard.env
