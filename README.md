@@ -1,95 +1,51 @@
 # Anveshak rover CAN system
 
-Spec: `docs/architecture.md`. Rules for Claude sessions: `CLAUDE.md`. Build tasks: `prompts/`.
+One CAN bus connects the rover's host computers (Jetson Orin, Raspberry Pi) to its nodes. **Every
+node is an ESP32** (WROOM or S3). Nodes get their IDs automatically, report their health, and are
+reflashed over CAN.
 
-## Who does what
+Spec: `docs/architecture.md`. Rules for Claude sessions: `CLAUDE.md`.
 
-The work is split between two people so you never edit the same folders:
+## Branches
 
-- **Person A: firmware** (`firmware/`), plus the shared definitions (`defs/`) at the start.
-- **Person B: host side** (`host/`, `dashboard/`).
+| Branch | What |
+|---|---|
+| `main` | The first version (Tier 1): STM32 + ESP32 era. Kept as history. |
+| `next` | **Work in progress.** The bench system (RPi + ESP32s, touch screen, flashing over CAN) with STM32 removed. The new libraries land here, one PR per `lib/*` branch, and `next` replaces `main` once they work end to end. |
+| `lib/*` | One branch per library (see below). Each is a PR into `next`. |
 
-The DBC file in `defs/` is the contract between you. The simulator (built in P0) pretends to be
-the nodes, so person B never has to wait for person A's firmware.
+## Where this is going: libraries first, apps on top
 
-## Order of work
+The code is being rebuilt as general libraries that know nothing about this particular rover (no
+fixed node counts, wheel counts or node types). The rover becomes configuration plus small apps.
 
-**Tier 1, must-have.** The rover can be driven over CAN from one host, and you can see every node
-on a dashboard.
+```
+            apps (later): gateway daemon, dashboard, ROS 2 package, drive controller, ...
+───────────────────────────────────────────────────────────────────────────────────
+FIRMWARE (ESP32, C)                       HOST (C++ and Python)
+  anv_node     node runtime, objects        anv_host     discovery, registry, leadership,
+  anv_ota      flashing over CAN                         parameter/command client, streams
+  anv_diag     events, black box, debug     anv_flash    flash any node or a whole role
+  anv_proto    29-bit IDs, ISO-TP, codecs   anv_proto    same, generated from the same schema
+  anv_link     CAN driver: TWAI, test       anv_link     SocketCAN, virtual, test
+───────────────────────────────────────────────────────────────────────────────────
+              schema/  node types in YAML → generated C, C++, Python and DBC
+```
 
-| Step | Who | Prompt | Needs first | Rough cost |
-|---|---|---|---|---|
-| 1 | A | `P0-definitions-and-simulator` | nothing | $8–12 |
-| 2 | A | `A1-firmware-core` | P0 merged | $15–25 |
-| 2 | B | `B1-gateway-core` | P0 merged | $15–25 |
-| 3 | A | `A2-drivers-and-drive-node` | A1 merged | $10–20 |
-| 3 | B | `B2-ros2-package` | B1 merged | $8–15 |
-| 4 | B | `B3-dashboard-mvp` | B1 merged (B2 not needed) | $15–25 |
+| Branch | Library |
+|---|---|
+| `lib/schema` | The YAML schema for node types, and the generator |
+| `lib/link-proto` | `anv_link` + `anv_proto` (firmware and host) |
+| `lib/node` | `anv_node`: node runtime and object dictionary |
+| `lib/host` | `anv_host`: discovery, registry, leadership, clients |
+| `lib/ota-diag` | Flashing and diagnostics on the new base |
+| `lib/sim` | A simulator for any number of nodes of any type |
 
-Steps with the same number run at the same time, one per person.
+## Using what works today (`next`)
 
-**Tier 2.** Reflashing over CAN, debugging and error reports, more dashboard controls.
+- **The bench** (RPi + CAN HAT + touch screen + ESP32s): `host/tools/rpi-bench/README.md`.
+- **The ESP32 node sketch**: `firmware/nodes/bench_esp32_arduino/README.md`.
+- **No hardware**: `host/sim` simulates nodes on a virtual bus; see "Without any hardware" in the
+  bench README.
 
-| Who | Prompt | Needs first | Rough cost |
-|---|---|---|---|
-| A | `A3-bootloader-and-flasher` | A2 | $10–20 |
-| A | `A4-node-diagnostics-and-debug` | A2 | $10–15 |
-| B | `B4-gateway-link-debug-and-errors` | B3 | $12–20 |
-| B | `B5-control-panel` | B3 | $12–20 |
-
-**Tier 3.** Nice to have.
-
-| Who | Prompt | Needs first | Rough cost |
-|---|---|---|---|
-| A | `A5-esp32-ota` | A4 | $6–10 |
-| B | `B6-frame-lab-profiles-reports` | B4, B5 | $12–20 |
-
-Costs are rough estimates, mostly using Sonnet. Tier 1 is about $70–120 for both of you
-together.
-
-## One-time setup (one person, about 15 minutes)
-
-1. Create a GitHub repo, for example `anveshak-can` (private is fine). Add your friend as a
-   collaborator (Settings → Collaborators).
-2. Copy everything in this starter pack into the repo, then commit and push to `main`.
-
-## Each person, once
-
-1. Open https://claude.ai/code and sign in.
-2. Connect GitHub when it asks: install the **Claude GitHub App** and give it access to the
-   `anveshak-can` repo.
-3. Keep the default cloud environment (Trusted network access) for now.
-4. In claude.ai **Settings → Usage**, check that pay-as-you-go **usage credits are off**. Then
-   nothing can ever cost money: after the free cloud credit runs out, work just continues on your
-   normal plan limits.
-5. Look at the **Cloud session credits** meter on the same Settings page; that's your $100.
-
-## Running one step
-
-1. At claude.ai/code, start a **new session**: pick the repo, branch `main`.
-2. Type `/model sonnet` and send it. Sonnet is much cheaper than Opus and fine for this work.
-3. Send this message (change the prompt name):
-
-   > Do the task in `prompts/A1-firmware-core.md`. Follow `CLAUDE.md`. Work on a new branch and open a PR when done.
-
-4. Leave it running. It usually takes 30 minutes to 2 hours. You can close the browser; it keeps
-   going. If it asks a question, answer it from the session page or the Claude phone app.
-5. When it finishes, review the changes, open the PR, wait for CI to pass, and merge into `main`.
-6. Check the credit meter. Start the next step in a **new** session (fresh sessions cost less
-   than one long one).
-
-Rules that save money:
-
-- One session at a time per person.
-- Don't start an extra session to "explore" or "improve" things.
-- If a session goes in the wrong direction, stop it early and start again with a clearer message,
-  rather than letting it dig deeper.
-- Only switch to Opus (`/model opus`) if Sonnet is clearly stuck on a hard part, for example the
-  bootloader.
-- When your credit is nearly used up, finish the current step and do the rest on your normal plan
-  limits, which are slower but free.
-
-## When something needs a change in `defs/`
-
-Make it a small separate PR first, tell the other person, and merge it before continuing. Never
-change a message layout only in code.
+Earlier task prompts (the two-person P0/A/B plan) are in `prompts/v1/`.

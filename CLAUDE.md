@@ -1,5 +1,8 @@
 # Anveshak rover CAN system — rules for every Claude session
 
+**Every node is an ESP32 (WROOM or S3).** STM32 support was removed on 2026-10-18; the STM32
+sections of `docs/architecture.md` are historical. Don't add STM32 code back.
+
 The full design is in `docs/architecture.md`. It is the spec. Read only the sections your
 prompt names; don't read the whole file unless the prompt says so.
 
@@ -45,10 +48,8 @@ defs/                      shared definitions (owned by P0; changes need a note 
   codegen/                 scripts: DBC -> C, errors -> C + Python, params -> C + Python
 firmware/                  person A
   core/                    anveshak_can_core (C11, no malloc, no RTOS dependency in core)
-  drivers/                 bxcan/, fdcan/, twai/, loopback/ (for tests)
-  nodes/drive_stm32/       drive node application
-  nodes/sensor_esp32s3/    ESP32-S3 node template (ESP-IDF component + app)
-  bootloader_stm32/        CAN bootloader (later)
+  drivers/loopback/        in-process fake bus (for tests)
+  nodes/bench_esp32_arduino/  ESP32 (WROOM / S3) node sketch, Arduino
   tests/                   host-side unit tests (run on Linux with the loopback driver)
 host/                      person B
   gateway/                 C++17 core library, no ROS dependency
@@ -68,8 +69,7 @@ dashboard/                 person B
 - Firmware core: build for Linux and test with the `loopback` driver (an in-process fake bus).
 - Host side: use `python-can` with its `virtual` interface, or an in-process fake bus. Use
   Linux `vcan` only if `sudo ip link add dev vcan0 type vcan` works in this VM.
-- STM32 code: compile with `arm-none-eabi-gcc` (install with apt if missing). It can't be run
-  here; compile-only is fine.
+- ESP32 code: CI compiles it with `arduino-cli`; it can't be run here.
 - ROS 2: CI builds on `ros:humble` and `ros:jazzy` containers.
 
 ## Code style

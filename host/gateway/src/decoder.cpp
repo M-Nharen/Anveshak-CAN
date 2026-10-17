@@ -180,7 +180,7 @@ std::string text_of(const S& s) {
 
 // Nodes without their own DBC entries (auxiliary nodes 16-30, e.g. auto-addressed ESP32s) send the
 // shared heartbeat and 4x u16 sensor layouts; firmware packs them with the DRIVE1 / FPGA packers
-// (anv_node.c, sensor_esp32s3), so decode them with the same generated unpackers.
+// (anv_node.c, the ESP32 nodes), so decode them with the same generated unpackers.
 bool decode_generic(const CanFrame& frame, Decoded& out) {
   const uint8_t* d = frame.data.data();
   const size_t len = frame.dlc;

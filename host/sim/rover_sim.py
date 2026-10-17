@@ -59,7 +59,7 @@ def load_db() -> cantools.database.can.Database:
 
 @dataclass
 class DriveNodeSim:
-    """One simulated drive node (STM32), node IDs 4-9."""
+    """One simulated drive node, node IDs 4-9."""
 
     drive_num: int  # 1-6
     db: cantools.database.can.Database

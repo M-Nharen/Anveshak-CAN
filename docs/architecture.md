@@ -2,6 +2,10 @@
 
 Oct 9, 2026 · @Nharen
 
+> **Update, Oct 18, 2026: every node is now an ESP32 (WROOM or S3). STM32 parts (bxCAN, FDCAN,
+> the STM32 CAN bootloader) were dropped; read the STM32 sections below as history. Firmware
+> updates are over CAN into the ESP32's spare OTA slot, with automatic rollback.**
+
 > Live, editable version: https://claude.ai/code/artifact/455c9bfd-96bd-4eb0-93cc-b2e3a0f068b2
 >
 > Decisions as of Oct 9, 2026: CAN 2.0A at 500 kbps (RPi MCP2515 crystal unknown, designed for 8 MHz worst case), 50 Hz control cycle, Option A leadership (operator chooses the leading host, RPi can take over any time, no default, auto-takeover off), ROS 2 inside each host only, each host independently on Humble or Jazzy, hosts linked by CAN plus a UDP gateway link, debug levels 0-3 (off unless switched on; default 1 testing / 0 competition; separate flight recorder switch, on by default), website control panel (driving, speeds, rates, frame lab, profiles), TCAN1044AV transceivers, Orin Nano, Tang Nano 20K FPGA, physical + wireless hardware E-stop.
