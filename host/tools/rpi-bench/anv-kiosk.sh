@@ -2,6 +2,11 @@
 # Started by the desktop session (XDG autostart): waits for the dashboard, then shows the Bench page
 # full-screen on the 7" display. Chromium is restarted if it ever exits.
 url="http://localhost:8080/?kiosk"
+# Started over SSH there is no display in the environment: use the desktop on the attached screen.
+if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+  export DISPLAY=:0
+  [[ -f "$HOME/.Xauthority" ]] && export XAUTHORITY="$HOME/.Xauthority"
+fi
 until curl -fs http://localhost:8080/api/health >/dev/null; do sleep 1; done
 browser="$(command -v chromium || command -v chromium-browser)"
 while true; do

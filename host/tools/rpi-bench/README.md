@@ -1,6 +1,6 @@
 # RPi bench: CAN gateway, node discovery and the 7" touch screen
 
-One Raspberry Pi with a Waveshare **2-CH CAN HAT**, a **7" 1024×600 HDMI touch screen**, and a few ESP32
+One Raspberry Pi (Pi OS Bookworm or Ubuntu/Xubuntu desktop) with a Waveshare **2-CH CAN HAT**, a **7" 1024×600 HDMI touch screen**, and a few ESP32
 boards (WROOM or S3) running `firmware/nodes/bench_esp32_arduino`. The RPi gives each board a node ID,
 discovers how many are on the bus, and shows them live on the screen. It also raises an alert when a
 board joins, goes missing or reboots.
@@ -98,6 +98,11 @@ Run it again after a `git pull` to rebuild and restart.
 
 **To give a board a new ID:** type `forget` in its serial console, then long-press its old tile and
 choose **Forget ID** to free the old number.
+
+**Opening the screen by hand:** `pkill -f anv-kiosk; /opt/anveshak/bin/anv-kiosk.sh &`. This works from
+a terminal on the Pi's desktop, or over SSH while someone is logged in to the desktop; it then uses
+display `:0`. To quit kiosk mode run `pkill -f anv-kiosk; pkill chromium`, because the script
+restarts Chromium if it closes.
 
 **Without the touch screen:** open `http://<rpi-address>:8080/#bench` from a laptop on the same
 network. Use the normal tabs, or add `?kiosk` for the full-screen layout.
