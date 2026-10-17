@@ -88,5 +88,5 @@ class FlashJobs:
     async def stop(self) -> None:
         self.cancel()
         if self._task is not None:
-            with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
                 await asyncio.wait_for(self._task, timeout=3.0)
