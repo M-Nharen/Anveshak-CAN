@@ -1,0 +1,29 @@
+# A reusable piece: supply voltage/current monitoring. Include it in any node type:
+#
+#   include:
+#     - power_monitor.yaml                                   # as is
+#     - {file: power_monitor.yaml, prefix: aux_, port_offset: 1, index_offset: 0x10,
+#        event_offset: 0x10}                                 # a second copy, renamed and moved
+#
+# Ports, indices and codes below are relative to the offsets.
+description: Supply voltage and current, with limits that raise events.
+
+messages:
+  - name: power
+    port: 200
+    kind: stream
+    rate: {default: 5, min: 0, max: 50}
+    description: Supply voltage and current
+    fields:
+      - {name: voltage, type: u16, scale: 0.001, unit: V, min: 0, max: 65.535}
+      - {name: current, type: i16, scale: 0.01, unit: A, min: -327.68, max: 327.67}
+
+params:
+  - {index: 0x0E00, name: undervoltage_v, type: f32, min: 0, max: 60, default: 10.5, unit: V,
+     group: power, description: "Raise undervoltage below this"}
+  - {index: 0x0E01, name: overvoltage_v, type: f32, min: 0, max: 60, default: 30.0, unit: V,
+     group: power, description: "Raise overvoltage above this"}
+
+events:
+  - {code: 0x7E01, name: supply_low, severity: error, description: "Supply below undervoltage_v (detail = mV)"}
+  - {code: 0x7E02, name: supply_high, severity: error, description: "Supply above overvoltage_v (detail = mV)"}

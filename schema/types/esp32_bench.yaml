@@ -1,0 +1,22 @@
+# The bench test board (firmware/nodes/bench_esp32_arduino): any ESP32 with nothing attached.
+# It reports four numbers about itself, which is enough to see a node live on the screen.
+name: esp32_bench
+type_id: 2
+version: 1
+description: Bench test board reporting its own chip temperature, memory and CAN counters.
+
+messages:
+  - name: status
+    port: 64
+    kind: stream
+    rate: {default: 10, min: 0, max: 50}
+    description: How the board itself is doing
+    fields:
+      - {name: chip_temp, type: i16, scale: 0.01, unit: degC}
+      - {name: free_heap, type: u16, unit: KiB}
+      - {name: rx_frames, type: u16, description: low 16 bits of frames received}
+      - {name: tx_frames, type: u16, description: low 16 bits of frames sent and acknowledged}
+
+actions:
+  - {index: 1, name: blink, arg: {type: u8, min: 1, max: 60, unit: s},
+     description: "Blink the LED for this many seconds"}

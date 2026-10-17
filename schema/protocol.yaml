@@ -1,0 +1,338 @@
+# The shared protocol every node and host speaks, whatever its type.
+#
+# Format reference: schema/README.md. This file uses the same format as a node type
+# (schema/types/*.yaml) plus two sections only it may have: `id_layout` and `node_ids`.
+# Its messages own ports 0-63; node types own ports 64 and up.
+
+name: protocol
+type_id: 0          # 0 is "the protocol itself"; node types start at 2 (1 is "host")
+version: 1
+description: Messages, parameters and events common to every node and host.
+
+# How a 29-bit extended CAN identifier is split. Fields are listed from the most significant
+# bit down. Arbitration compares from the top, so `priority` (lower wins) must come first.
+# `dst` sits in the top 16 bits so the ESP32's TWAI dual-filter mode (which only compares
+# ID bits 28-13 for extended frames) can accept "addressed to me" and "broadcast" in
+# hardware. Change widths here and every generator follows; the total must be 29.
+id_layout:
+  - {field: priority, bits: 3}
+  - {field: dst, bits: 8}
+  - {field: port, bits: 10}
+  - {field: src, bits: 8}
+
+node_ids:
+  broadcast: 0         # dst = 0: everyone
+  unassigned: 255      # a board with no ID yet sends from 255 and is answered at 255
+  first: 1
+  last: 254            # hosts and nodes share this range; ranges for the allocator are config
+
+ports:
+  protocol_last: 63    # ports 0..63 are this file's; 64..max are per node type
+
+enums:
+  node_state:
+    boot: 0            # starting up, outputs off
+    unassigned: 1      # no node ID yet
+    idle: 2            # running, disarmed: outputs off
+    armed: 3           # outputs live, following commands
+    fault: 4           # latched fault: outputs off until FAULT_RESET
+    estop: 5           # E-stop latched: outputs off until ESTOP_RELEASE
+    updating: 6        # receiving a firmware image: outputs off
+  host_role:
+    booting: 0
+    standby: 1
+    leader: 2
+    observer: 3
+  nmt_command:
+    arm: 1
+    disarm: 2
+    reset: 3
+    fault_reset: 4
+    identify: 5        # blink the node's LED for a few seconds
+    forget_id: 6       # erase the saved node ID and ask again (only while idle)
+  severity:
+    info: 0
+    warning: 1
+    error: 2
+    critical: 3
+  can_error_state:
+    active: 0
+    passive: 1
+    bus_off: 2
+    recovered: 3
+  service_op:
+    get: 1             # read parameter `index`
+    set: 2             # write parameter `index` = value
+    save: 3            # persist all parameters (index ignored)
+    restore: 4         # restore defaults (index ignored), not saved until SAVE
+    info: 5            # read info page `index` (see info_page)
+    action: 6          # run action `index` with argument value
+    get_rate: 7        # stream rate of port `index`, in mHz (0 = off)
+    set_rate: 8        # set stream rate of port `index`, value in mHz (0 = off)
+    label_get: 9       # node label, 4 characters per `index` chunk (0..3)
+    label_set: 10      # set 4 characters of the label at chunk `index`
+  service_status:
+    ok: 0
+    bad_index: 1
+    out_of_range: 2
+    not_while_armed: 3
+    storage_error: 4
+    read_only: 5
+    bad_op: 6
+    busy: 7
+    failed: 8
+  info_page:
+    fw_build: 0        # firmware build ID (u32)
+    fw_version: 1      # firmware version, major << 16 | minor << 8 | patch
+    schema_hash: 2     # full 32-bit wire hash of the node's type
+    type_id: 3
+    chip: 4            # 1 ESP32, 2 ESP32-S3, 3 ESP32-C3, ...
+    mac_low: 5         # MAC bytes 2..5
+    mac_high: 6        # MAC bytes 0..1
+    boot_count: 7
+    reset_reason: 8
+    uptime_ms: 9
+    can_tec: 10
+    can_rec: 11
+    bus_off_count: 12
+    rx_frames: 13
+    tx_frames: 14
+    rx_dropped: 15
+  transfer_service:
+    ota: 1             # firmware image (see the OTA design in docs)
+    log: 2             # read the node's black-box log
+    describe: 3        # the node's own description (later)
+    bulk_params: 4     # many parameters in one transfer (later)
+
+messages:
+  - name: estop
+    port: 0
+    priority: 0
+    sender: any
+    kind: event
+    description: Stop everything now. Any node or host may send it; every node latches E-stop.
+    fields:
+      - {name: magic, type: u8, const: 0xE5}
+      - {name: reason, type: u8}
+
+  - name: estop_release
+    port: 1
+    priority: 0
+    sender: leader
+    kind: event
+    description: Clear the E-stop latch, after operator action.
+    fields:
+      - {name: term, type: u16}
+
+  - name: sync
+    port: 2
+    priority: 0
+    sender: leader
+    kind: stream
+    rate: {default: 50, min: 10, max: 200}
+    description: "Start of a control cycle. Nodes apply commands marked `apply: sync` on it."
+    fields:
+      - {name: counter, type: u8}
+      - {name: period_ms, type: u8, unit: ms}
+
+  - name: nmt
+    port: 3
+    priority: 1
+    sender: leader
+    kind: event
+    description: Network management. The frame's dst picks the node (0 = all nodes).
+    fields:
+      - {name: command, type: u8, enum: nmt_command}
+      - {name: term, type: u16}
+
+  - name: host_heartbeat
+    port: 4
+    priority: 0
+    sender: host
+    kind: stream
+    rate: {default: 20, min: 10, max: 50}
+    description: Every host, all the time. Drives the leader election.
+    fields:
+      - {name: role, type: u8, enum: host_role}
+      - {name: tie_break, type: u8}
+      - {name: term, type: u16}
+      - {name: leader, type: u8}
+      - {name: estop_latched, type: bool}
+      - {name: armed, type: bool}
+      - {name: operator_link, type: bool}
+      - {name: autonomy_ready, type: bool}
+      - {name: reserved, type: u4}
+      - {name: uptime_s, type: u16, unit: s}
+
+  - name: lead_request
+    port: 5
+    priority: 1
+    sender: host
+    kind: event
+    description: The operator wants this host (node ID) to lead. Counter makes a repeat press new.
+    fields:
+      - {name: leader, type: u8}
+      - {name: counter, type: u8}
+
+  - name: heartbeat
+    port: 6
+    priority: 5
+    sender: node
+    kind: stream
+    rate: {default: 10, min: 1, max: 50}
+    description: Every node. Lets hosts discover nodes, their type, health and firmware.
+    fields:
+      - {name: state, type: u8, enum: node_state}
+      - {name: can_state, type: u2, enum: can_error_state}
+      - {name: debug_level, type: u2}
+      - {name: unsaved_params, type: bool}
+      - {name: leader_seen, type: bool}
+      - {name: fault_active, type: bool}
+      - {name: reserved, type: bool}
+      - {name: type_id, type: u16}
+      - {name: schema_hash, type: u16, description: "low 16 bits of the type's wire hash"}
+      - {name: uptime_s, type: u16, unit: s}
+
+  - name: id_request
+    port: 8
+    priority: 4
+    sender: node
+    kind: event
+    description: A board with no ID asks for one, from src 255. Repeated with jitter until answered.
+    fields:
+      - {name: mac, type: u8, count: 6}
+      - {name: type_id, type: u16}
+
+  - name: id_assign
+    port: 9
+    priority: 4
+    sender: host
+    kind: event
+    description: The allocator's answer, sent to dst 255. The board checks the MAC and keeps the ID.
+    fields:
+      - {name: mac, type: u8, count: 6}
+      - {name: node_id, type: u8}
+      - {name: reserved, type: u8}
+
+  - name: service
+    port: 10
+    priority: 4
+    sender: any
+    kind: event
+    description: >
+      Request and response share one layout. Requests carry an op; the response repeats it
+      with a status. src and dst in the ID say who asked and who answers.
+    fields:
+      - {name: op, type: u4, enum: service_op}
+      - {name: status, type: u4, enum: service_status}
+      - {name: txn, type: u8}
+      - {name: index, type: u16}
+      - {name: value, type: u32}
+
+  - name: transfer
+    port: 11
+    priority: 6
+    sender: any
+    kind: frame
+    description: ISO-TP frames for anything over 8 bytes (firmware images, logs). First byte of each
+      transfer is a transfer_service.
+
+  - name: event
+    port: 12
+    priority: 3
+    sender: any
+    kind: event
+    description: Something happened on a node (or a host). Codes come from `events` below or the node type.
+    fields:
+      - {name: severity, type: u2, enum: severity}
+      - {name: reserved, type: u5}
+      - {name: cleared, type: bool, description: "the condition ended"}
+      - {name: code, type: u16}
+      - {name: seq, type: u8}
+      - {name: detail, type: u16}
+      - {name: uptime_s, type: u16, unit: s}
+
+  - name: debug_level
+    port: 13
+    priority: 4
+    sender: leader
+    kind: event
+    description: Turn debugging on a node (dst) or all nodes up or down, optionally for a while.
+    fields:
+      - {name: level, type: u8}
+      - {name: categories, type: u16}
+      - {name: timeout_s, type: u16, unit: s, description: "0 = until changed"}
+
+  - name: text
+    port: 14
+    priority: 7
+    sender: any
+    kind: event
+    description: Up to 7 characters of text for people (bench screen, serial console).
+    fields:
+      - {name: seq, type: u8}
+      - {name: chars, type: u8, count: 7}
+
+# Parameters every node has (indices 0xF000 and up are reserved for these).
+params:
+  - {index: 0xF000, name: heartbeat_hz, type: u8, min: 1, max: 50, default: 10, unit: Hz,
+     description: "Heartbeat rate"}
+  - {index: 0xF001, name: command_timeout_ms, type: u16, min: 20, max: 5000, default: 100, unit: ms,
+     disarmed_only: true, description: "Outputs stop if no command arrives for this long"}
+  - {index: 0xF002, name: leader_timeout_ms, type: u16, min: 50, max: 5000, default: 250, unit: ms,
+     disarmed_only: true, description: "Disarm if the leader's heartbeat stops for this long"}
+  - {index: 0xF003, name: debug_level, type: u8, min: 0, max: 3, default: 0, persist: false,
+     description: "Current debug level (also set by the debug_level message)"}
+  - {index: 0xF004, name: led_mode, type: u8, min: 0, max: 3, default: 1,
+     description: "0 off, 1 status, 2 activity, 3 owned by the application"}
+  - {index: 0xF005, name: event_rate_limit, type: u8, min: 1, max: 50, default: 1, unit: Hz,
+     description: "Most events of one code a node sends per second"}
+
+events:
+  # 0x00xx-0x3Fxx: protocol and node-generic. 0x40xx-0x7Fxx: per node type.
+  # 0x80xx-0xFFxx: raised by hosts.
+  - {code: 0x0101, name: can_error_passive, severity: warning, description: "Error counter passed 128",
+     cause: "Wiring, noise or termination"}
+  - {code: 0x0102, name: can_bus_off, severity: error, description: "Error counter passed 255",
+     cause: "This node's transceiver, wiring or bitrate"}
+  - {code: 0x0103, name: can_bus_off_recovered, severity: info, description: "Rejoined the bus after bus-off"}
+  - {code: 0x0104, name: can_rx_overflow, severity: warning, description: "Receive queue full, frames lost",
+     cause: "CPU too busy or filters too wide"}
+  - {code: 0x0105, name: can_tx_timeout, severity: warning, description: "Frame not sent in time",
+     cause: "Bus jammed or node error-passive"}
+  - {code: 0x0106, name: command_timeout, severity: error, description: "No command within command_timeout_ms (detail = port)",
+     cause: "Leader stopped, gateway crashed, or cable cut"}
+  - {code: 0x0107, name: leader_changed, severity: info, description: "New leader term seen; node disarmed"}
+  - {code: 0x0108, name: command_from_non_leader, severity: warning, description: "Command from a host that doesn't lead (detail = sender)"}
+  - {code: 0x0109, name: leader_lost, severity: error, description: "Leader heartbeat stopped; node disarmed"}
+  - {code: 0x0201, name: undervoltage, severity: error, description: "Supply below limit (detail = mV)"}
+  - {code: 0x0202, name: overvoltage, severity: error, description: "Supply above limit (detail = mV)"}
+  - {code: 0x0203, name: brownout_reset, severity: error, description: "Reset by brown-out"}
+  - {code: 0x0601, name: watchdog_reset, severity: error, description: "Firmware hung and the watchdog reset it"}
+  - {code: 0x0602, name: crash, severity: critical, description: "Firmware crashed (detail = low bits of PC)"}
+  - {code: 0x0603, name: stack_overflow, severity: critical, description: "A task overran its stack"}
+  - {code: 0x0604, name: params_corrupt, severity: error, description: "Saved parameters failed their check; defaults loaded"}
+  - {code: 0x0605, name: storage_write_fail, severity: error, description: "Saving parameters or logs failed"}
+  - {code: 0x0606, name: self_test_fail, severity: error, description: "Power-on self-test failed (detail = which test)"}
+  - {code: 0x0607, name: id_conflict, severity: critical, description: "Another board answered with this node's ID"}
+  - {code: 0x0701, name: update_started, severity: info, description: "Receiving a firmware image"}
+  - {code: 0x0702, name: update_wrong_type, severity: error, description: "Image for another chip or node type refused"}
+  - {code: 0x0703, name: update_rollback, severity: error, description: "New image failed to confirm itself; old image restored"}
+  - {code: 0x0704, name: update_done, severity: info, description: "Running a new firmware image (detail = low bits of build)"}
+  - {code: 0x0801, name: schema_mismatch, severity: error, description: "Node's type hash differs from the host's schema"}
+  - {code: 0x0802, name: bad_frame, severity: warning, description: "Known port with the wrong length or an invalid value (detail = port)"}
+  - {code: 0x0901, name: estop_received, severity: critical, description: "E-stop frame received (detail = sender)"}
+  - {code: 0x0902, name: estop_local, severity: critical, description: "This node's own E-stop input opened"}
+  - {code: 0x8001, name: node_missing, severity: error, description: "No heartbeat from a node"}
+  - {code: 0x8002, name: node_returned, severity: info, description: "A missing node is back"}
+  - {code: 0x8003, name: node_rebooted, severity: warning, description: "A node's uptime went down"}
+  - {code: 0x8004, name: message_rate_low, severity: warning, description: "A stream arriving slower than its set rate"}
+  - {code: 0x8005, name: unknown_frame, severity: warning, description: "A frame no schema describes"}
+  - {code: 0x8006, name: cycle_late, severity: warning, description: "Control cycle started late"}
+  - {code: 0x8007, name: two_leaders, severity: critical, description: "Two hosts claim to lead"}
+  - {code: 0x8008, name: host_rx_overrun, severity: warning, description: "The host's CAN controller dropped frames"}
+  - {code: 0x8009, name: bus_error_burst, severity: warning, description: "Many bus error frames in a second (detail = type)"}
+  - {code: 0x800A, name: no_leader, severity: info, description: "Hosts are up but no leader is chosen"}
+  - {code: 0x800B, name: lead_changed, severity: info, description: "A host took the lead (detail = new leader)"}
+  - {code: 0x800C, name: node_id_assigned, severity: info, description: "A board got a node ID (detail = ID)"}
+  - {code: 0x800D, name: unknown_type, severity: warning, description: "A node reports a type no schema file describes"}

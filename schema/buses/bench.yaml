@@ -1,0 +1,13 @@
+# An example bus layout, used only to make a DBC file for tools like SavvyCAN:
+#   anv-schema dbc schema/buses/bench.yaml -o bench.dbc
+# The running system does NOT need this: nodes get IDs automatically and report their type.
+name: bench
+description: RPi with three bench boards and one example motor controller.
+hosts:
+  - {id: 1, name: orin}
+  - {id: 2, name: rpi}
+nodes:
+  - {id: 16, name: bench_a, type: esp32_bench}
+  - {id: 17, name: bench_b, type: esp32_bench}
+  - {id: 18, name: bench_c, type: esp32_bench}
+  - {id: 20, name: motors_front, type: motor_controller}

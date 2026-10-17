@@ -1,0 +1,2722 @@
+{
+ "format": 1,
+ "id_layout": [
+  {
+   "field": "priority",
+   "bits": 3,
+   "shift": 26
+  },
+  {
+   "field": "dst",
+   "bits": 8,
+   "shift": 18
+  },
+  {
+   "field": "port",
+   "bits": 10,
+   "shift": 8
+  },
+  {
+   "field": "src",
+   "bits": 8,
+   "shift": 0
+  }
+ ],
+ "node_ids": {
+  "broadcast": 0,
+  "unassigned": 255,
+  "first": 1,
+  "last": 254
+ },
+ "protocol_last_port": 63,
+ "protocol": {
+  "name": "protocol",
+  "type_id": 0,
+  "version": 1,
+  "description": "Messages, parameters and events common to every node and host.",
+  "wire_hash": 3134267142,
+  "enums": {
+   "node_state": {
+    "boot": 0,
+    "unassigned": 1,
+    "idle": 2,
+    "armed": 3,
+    "fault": 4,
+    "estop": 5,
+    "updating": 6
+   },
+   "host_role": {
+    "booting": 0,
+    "standby": 1,
+    "leader": 2,
+    "observer": 3
+   },
+   "nmt_command": {
+    "arm": 1,
+    "disarm": 2,
+    "reset": 3,
+    "fault_reset": 4,
+    "identify": 5,
+    "forget_id": 6
+   },
+   "severity": {
+    "info": 0,
+    "warning": 1,
+    "error": 2,
+    "critical": 3
+   },
+   "can_error_state": {
+    "active": 0,
+    "passive": 1,
+    "bus_off": 2,
+    "recovered": 3
+   },
+   "service_op": {
+    "get": 1,
+    "set": 2,
+    "save": 3,
+    "restore": 4,
+    "info": 5,
+    "action": 6,
+    "get_rate": 7,
+    "set_rate": 8,
+    "label_get": 9,
+    "label_set": 10
+   },
+   "service_status": {
+    "ok": 0,
+    "bad_index": 1,
+    "out_of_range": 2,
+    "not_while_armed": 3,
+    "storage_error": 4,
+    "read_only": 5,
+    "bad_op": 6,
+    "busy": 7,
+    "failed": 8
+   },
+   "info_page": {
+    "fw_build": 0,
+    "fw_version": 1,
+    "schema_hash": 2,
+    "type_id": 3,
+    "chip": 4,
+    "mac_low": 5,
+    "mac_high": 6,
+    "boot_count": 7,
+    "reset_reason": 8,
+    "uptime_ms": 9,
+    "can_tec": 10,
+    "can_rec": 11,
+    "bus_off_count": 12,
+    "rx_frames": 13,
+    "tx_frames": 14,
+    "rx_dropped": 15
+   },
+   "transfer_service": {
+    "ota": 1,
+    "log": 2,
+    "describe": 3,
+    "bulk_params": 4
+   }
+  },
+  "messages": [
+   {
+    "name": "estop",
+    "port": 0,
+    "priority": 0,
+    "sender": "any",
+    "kind": "event",
+    "length": 2,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Stop everything now. Any node or host may send it; every node latches E-stop.",
+    "fields": [
+     {
+      "name": "magic",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": 229,
+      "description": ""
+     },
+     {
+      "name": "reason",
+      "type": "u8",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "estop_release",
+    "port": 1,
+    "priority": 0,
+    "sender": "leader",
+    "kind": "event",
+    "length": 2,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Clear the E-stop latch, after operator action.",
+    "fields": [
+     {
+      "name": "term",
+      "type": "u16",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "sync",
+    "port": 2,
+    "priority": 0,
+    "sender": "leader",
+    "kind": "stream",
+    "length": 2,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": {
+     "default": 50.0,
+     "min": 10.0,
+     "max": 200.0
+    },
+    "description": "Start of a control cycle. Nodes apply commands marked `apply: sync` on it.",
+    "fields": [
+     {
+      "name": "counter",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "period_ms",
+      "type": "u8",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "ms",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "nmt",
+    "port": 3,
+    "priority": 1,
+    "sender": "leader",
+    "kind": "event",
+    "length": 3,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Network management. The frame's dst picks the node (0 = all nodes).",
+    "fields": [
+     {
+      "name": "command",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "nmt_command",
+       "values": {
+        "arm": 1,
+        "disarm": 2,
+        "reset": 3,
+        "fault_reset": 4,
+        "identify": 5,
+        "forget_id": 6
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "term",
+      "type": "u16",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "host_heartbeat",
+    "port": 4,
+    "priority": 0,
+    "sender": "host",
+    "kind": "stream",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": {
+     "default": 20.0,
+     "min": 10.0,
+     "max": 50.0
+    },
+    "description": "Every host, all the time. Drives the leader election.",
+    "fields": [
+     {
+      "name": "role",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "host_role",
+       "values": {
+        "booting": 0,
+        "standby": 1,
+        "leader": 2,
+        "observer": 3
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "tie_break",
+      "type": "u8",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "term",
+      "type": "u16",
+      "start_bit": 16,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "leader",
+      "type": "u8",
+      "start_bit": 32,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "estop_latched",
+      "type": "bool",
+      "start_bit": 40,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "armed",
+      "type": "bool",
+      "start_bit": 41,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "operator_link",
+      "type": "bool",
+      "start_bit": 42,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "autonomy_ready",
+      "type": "bool",
+      "start_bit": 43,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "reserved",
+      "type": "u4",
+      "start_bit": 44,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "uptime_s",
+      "type": "u16",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "s",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "lead_request",
+    "port": 5,
+    "priority": 1,
+    "sender": "host",
+    "kind": "event",
+    "length": 2,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "The operator wants this host (node ID) to lead. Counter makes a repeat press new.",
+    "fields": [
+     {
+      "name": "leader",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "counter",
+      "type": "u8",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "heartbeat",
+    "port": 6,
+    "priority": 5,
+    "sender": "node",
+    "kind": "stream",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": {
+     "default": 10.0,
+     "min": 1.0,
+     "max": 50.0
+    },
+    "description": "Every node. Lets hosts discover nodes, their type, health and firmware.",
+    "fields": [
+     {
+      "name": "state",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "node_state",
+       "values": {
+        "boot": 0,
+        "unassigned": 1,
+        "idle": 2,
+        "armed": 3,
+        "fault": 4,
+        "estop": 5,
+        "updating": 6
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "can_state",
+      "type": "u2",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "can_error_state",
+       "values": {
+        "active": 0,
+        "passive": 1,
+        "bus_off": 2,
+        "recovered": 3
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "debug_level",
+      "type": "u2",
+      "start_bit": 10,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "unsaved_params",
+      "type": "bool",
+      "start_bit": 12,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "leader_seen",
+      "type": "bool",
+      "start_bit": 13,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "fault_active",
+      "type": "bool",
+      "start_bit": 14,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "reserved",
+      "type": "bool",
+      "start_bit": 15,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "type_id",
+      "type": "u16",
+      "start_bit": 16,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "schema_hash",
+      "type": "u16",
+      "start_bit": 32,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": "low 16 bits of the type's wire hash"
+     },
+     {
+      "name": "uptime_s",
+      "type": "u16",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "s",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "id_request",
+    "port": 8,
+    "priority": 4,
+    "sender": "node",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "A board with no ID asks for one, from src 255. Repeated with jitter until answered.",
+    "fields": [
+     {
+      "name": "mac",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 6,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "type_id",
+      "type": "u16",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "id_assign",
+    "port": 9,
+    "priority": 4,
+    "sender": "host",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "The allocator's answer, sent to dst 255. The board checks the MAC and keeps the ID.",
+    "fields": [
+     {
+      "name": "mac",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 6,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "node_id",
+      "type": "u8",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "reserved",
+      "type": "u8",
+      "start_bit": 56,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "service",
+    "port": 10,
+    "priority": 4,
+    "sender": "any",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Request and response share one layout. Requests carry an op; the response repeats it with a status. src and dst in the ID say who asked and who answers.",
+    "fields": [
+     {
+      "name": "op",
+      "type": "u4",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "service_op",
+       "values": {
+        "get": 1,
+        "set": 2,
+        "save": 3,
+        "restore": 4,
+        "info": 5,
+        "action": 6,
+        "get_rate": 7,
+        "set_rate": 8,
+        "label_get": 9,
+        "label_set": 10
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "status",
+      "type": "u4",
+      "start_bit": 4,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "service_status",
+       "values": {
+        "ok": 0,
+        "bad_index": 1,
+        "out_of_range": 2,
+        "not_while_armed": 3,
+        "storage_error": 4,
+        "read_only": 5,
+        "bad_op": 6,
+        "busy": 7,
+        "failed": 8
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "txn",
+      "type": "u8",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "index",
+      "type": "u16",
+      "start_bit": 16,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "value",
+      "type": "u32",
+      "start_bit": 32,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "transfer",
+    "port": 11,
+    "priority": 6,
+    "sender": "any",
+    "kind": "frame",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "ISO-TP frames for anything over 8 bytes (firmware images, logs). First byte of each transfer is a transfer_service.",
+    "fields": []
+   },
+   {
+    "name": "event",
+    "port": 12,
+    "priority": 3,
+    "sender": "any",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Something happened on a node (or a host). Codes come from `events` below or the node type.",
+    "fields": [
+     {
+      "name": "severity",
+      "type": "u2",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": {
+       "name": "severity",
+       "values": {
+        "info": 0,
+        "warning": 1,
+        "error": 2,
+        "critical": 3
+       }
+      },
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "reserved",
+      "type": "u5",
+      "start_bit": 2,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "cleared",
+      "type": "bool",
+      "start_bit": 7,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": "the condition ended"
+     },
+     {
+      "name": "code",
+      "type": "u16",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "seq",
+      "type": "u8",
+      "start_bit": 24,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "detail",
+      "type": "u16",
+      "start_bit": 32,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "uptime_s",
+      "type": "u16",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "s",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "debug_level",
+    "port": 13,
+    "priority": 4,
+    "sender": "leader",
+    "kind": "event",
+    "length": 5,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Turn debugging on a node (dst) or all nodes up or down, optionally for a while.",
+    "fields": [
+     {
+      "name": "level",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "categories",
+      "type": "u16",
+      "start_bit": 8,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "timeout_s",
+      "type": "u16",
+      "start_bit": 24,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "s",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": "0 = until changed"
+     }
+    ]
+   },
+   {
+    "name": "text",
+    "port": 14,
+    "priority": 7,
+    "sender": "any",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "Up to 7 characters of text for people (bench screen, serial console).",
+    "fields": [
+     {
+      "name": "seq",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "chars",
+      "type": "u8",
+      "start_bit": 8,
+      "count": 7,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   }
+  ],
+  "params": [
+   {
+    "index": 61440,
+    "name": "heartbeat_hz",
+    "type": "u8",
+    "default": 10.0,
+    "min": 1.0,
+    "max": 50.0,
+    "unit": "Hz",
+    "access": "rw",
+    "persist": true,
+    "disarmed_only": false,
+    "reboot_required": false,
+    "group": "",
+    "enum": null,
+    "description": "Heartbeat rate"
+   },
+   {
+    "index": 61441,
+    "name": "command_timeout_ms",
+    "type": "u16",
+    "default": 100.0,
+    "min": 20.0,
+    "max": 5000.0,
+    "unit": "ms",
+    "access": "rw",
+    "persist": true,
+    "disarmed_only": true,
+    "reboot_required": false,
+    "group": "",
+    "enum": null,
+    "description": "Outputs stop if no command arrives for this long"
+   },
+   {
+    "index": 61442,
+    "name": "leader_timeout_ms",
+    "type": "u16",
+    "default": 250.0,
+    "min": 50.0,
+    "max": 5000.0,
+    "unit": "ms",
+    "access": "rw",
+    "persist": true,
+    "disarmed_only": true,
+    "reboot_required": false,
+    "group": "",
+    "enum": null,
+    "description": "Disarm if the leader's heartbeat stops for this long"
+   },
+   {
+    "index": 61443,
+    "name": "debug_level",
+    "type": "u8",
+    "default": 0.0,
+    "min": 0.0,
+    "max": 3.0,
+    "unit": "",
+    "access": "rw",
+    "persist": false,
+    "disarmed_only": false,
+    "reboot_required": false,
+    "group": "",
+    "enum": null,
+    "description": "Current debug level (also set by the debug_level message)"
+   },
+   {
+    "index": 61444,
+    "name": "led_mode",
+    "type": "u8",
+    "default": 1.0,
+    "min": 0.0,
+    "max": 3.0,
+    "unit": "",
+    "access": "rw",
+    "persist": true,
+    "disarmed_only": false,
+    "reboot_required": false,
+    "group": "",
+    "enum": null,
+    "description": "0 off, 1 status, 2 activity, 3 owned by the application"
+   },
+   {
+    "index": 61445,
+    "name": "event_rate_limit",
+    "type": "u8",
+    "default": 1.0,
+    "min": 1.0,
+    "max": 50.0,
+    "unit": "Hz",
+    "access": "rw",
+    "persist": true,
+    "disarmed_only": false,
+    "reboot_required": false,
+    "group": "",
+    "enum": null,
+    "description": "Most events of one code a node sends per second"
+   }
+  ],
+  "actions": [],
+  "events": [
+   {
+    "code": 257,
+    "name": "can_error_passive",
+    "severity": "warning",
+    "description": "Error counter passed 128",
+    "cause": "Wiring, noise or termination"
+   },
+   {
+    "code": 258,
+    "name": "can_bus_off",
+    "severity": "error",
+    "description": "Error counter passed 255",
+    "cause": "This node's transceiver, wiring or bitrate"
+   },
+   {
+    "code": 259,
+    "name": "can_bus_off_recovered",
+    "severity": "info",
+    "description": "Rejoined the bus after bus-off",
+    "cause": ""
+   },
+   {
+    "code": 260,
+    "name": "can_rx_overflow",
+    "severity": "warning",
+    "description": "Receive queue full, frames lost",
+    "cause": "CPU too busy or filters too wide"
+   },
+   {
+    "code": 261,
+    "name": "can_tx_timeout",
+    "severity": "warning",
+    "description": "Frame not sent in time",
+    "cause": "Bus jammed or node error-passive"
+   },
+   {
+    "code": 262,
+    "name": "command_timeout",
+    "severity": "error",
+    "description": "No command within command_timeout_ms (detail = port)",
+    "cause": "Leader stopped, gateway crashed, or cable cut"
+   },
+   {
+    "code": 263,
+    "name": "leader_changed",
+    "severity": "info",
+    "description": "New leader term seen; node disarmed",
+    "cause": ""
+   },
+   {
+    "code": 264,
+    "name": "command_from_non_leader",
+    "severity": "warning",
+    "description": "Command from a host that doesn't lead (detail = sender)",
+    "cause": ""
+   },
+   {
+    "code": 265,
+    "name": "leader_lost",
+    "severity": "error",
+    "description": "Leader heartbeat stopped; node disarmed",
+    "cause": ""
+   },
+   {
+    "code": 513,
+    "name": "undervoltage",
+    "severity": "error",
+    "description": "Supply below limit (detail = mV)",
+    "cause": ""
+   },
+   {
+    "code": 514,
+    "name": "overvoltage",
+    "severity": "error",
+    "description": "Supply above limit (detail = mV)",
+    "cause": ""
+   },
+   {
+    "code": 515,
+    "name": "brownout_reset",
+    "severity": "error",
+    "description": "Reset by brown-out",
+    "cause": ""
+   },
+   {
+    "code": 1537,
+    "name": "watchdog_reset",
+    "severity": "error",
+    "description": "Firmware hung and the watchdog reset it",
+    "cause": ""
+   },
+   {
+    "code": 1538,
+    "name": "crash",
+    "severity": "critical",
+    "description": "Firmware crashed (detail = low bits of PC)",
+    "cause": ""
+   },
+   {
+    "code": 1539,
+    "name": "stack_overflow",
+    "severity": "critical",
+    "description": "A task overran its stack",
+    "cause": ""
+   },
+   {
+    "code": 1540,
+    "name": "params_corrupt",
+    "severity": "error",
+    "description": "Saved parameters failed their check; defaults loaded",
+    "cause": ""
+   },
+   {
+    "code": 1541,
+    "name": "storage_write_fail",
+    "severity": "error",
+    "description": "Saving parameters or logs failed",
+    "cause": ""
+   },
+   {
+    "code": 1542,
+    "name": "self_test_fail",
+    "severity": "error",
+    "description": "Power-on self-test failed (detail = which test)",
+    "cause": ""
+   },
+   {
+    "code": 1543,
+    "name": "id_conflict",
+    "severity": "critical",
+    "description": "Another board answered with this node's ID",
+    "cause": ""
+   },
+   {
+    "code": 1793,
+    "name": "update_started",
+    "severity": "info",
+    "description": "Receiving a firmware image",
+    "cause": ""
+   },
+   {
+    "code": 1794,
+    "name": "update_wrong_type",
+    "severity": "error",
+    "description": "Image for another chip or node type refused",
+    "cause": ""
+   },
+   {
+    "code": 1795,
+    "name": "update_rollback",
+    "severity": "error",
+    "description": "New image failed to confirm itself; old image restored",
+    "cause": ""
+   },
+   {
+    "code": 1796,
+    "name": "update_done",
+    "severity": "info",
+    "description": "Running a new firmware image (detail = low bits of build)",
+    "cause": ""
+   },
+   {
+    "code": 2049,
+    "name": "schema_mismatch",
+    "severity": "error",
+    "description": "Node's type hash differs from the host's schema",
+    "cause": ""
+   },
+   {
+    "code": 2050,
+    "name": "bad_frame",
+    "severity": "warning",
+    "description": "Known port with the wrong length or an invalid value (detail = port)",
+    "cause": ""
+   },
+   {
+    "code": 2305,
+    "name": "estop_received",
+    "severity": "critical",
+    "description": "E-stop frame received (detail = sender)",
+    "cause": ""
+   },
+   {
+    "code": 2306,
+    "name": "estop_local",
+    "severity": "critical",
+    "description": "This node's own E-stop input opened",
+    "cause": ""
+   },
+   {
+    "code": 32769,
+    "name": "node_missing",
+    "severity": "error",
+    "description": "No heartbeat from a node",
+    "cause": ""
+   },
+   {
+    "code": 32770,
+    "name": "node_returned",
+    "severity": "info",
+    "description": "A missing node is back",
+    "cause": ""
+   },
+   {
+    "code": 32771,
+    "name": "node_rebooted",
+    "severity": "warning",
+    "description": "A node's uptime went down",
+    "cause": ""
+   },
+   {
+    "code": 32772,
+    "name": "message_rate_low",
+    "severity": "warning",
+    "description": "A stream arriving slower than its set rate",
+    "cause": ""
+   },
+   {
+    "code": 32773,
+    "name": "unknown_frame",
+    "severity": "warning",
+    "description": "A frame no schema describes",
+    "cause": ""
+   },
+   {
+    "code": 32774,
+    "name": "cycle_late",
+    "severity": "warning",
+    "description": "Control cycle started late",
+    "cause": ""
+   },
+   {
+    "code": 32775,
+    "name": "two_leaders",
+    "severity": "critical",
+    "description": "Two hosts claim to lead",
+    "cause": ""
+   },
+   {
+    "code": 32776,
+    "name": "host_rx_overrun",
+    "severity": "warning",
+    "description": "The host's CAN controller dropped frames",
+    "cause": ""
+   },
+   {
+    "code": 32777,
+    "name": "bus_error_burst",
+    "severity": "warning",
+    "description": "Many bus error frames in a second (detail = type)",
+    "cause": ""
+   },
+   {
+    "code": 32778,
+    "name": "no_leader",
+    "severity": "info",
+    "description": "Hosts are up but no leader is chosen",
+    "cause": ""
+   },
+   {
+    "code": 32779,
+    "name": "lead_changed",
+    "severity": "info",
+    "description": "A host took the lead (detail = new leader)",
+    "cause": ""
+   },
+   {
+    "code": 32780,
+    "name": "node_id_assigned",
+    "severity": "info",
+    "description": "A board got a node ID (detail = ID)",
+    "cause": ""
+   },
+   {
+    "code": 32781,
+    "name": "unknown_type",
+    "severity": "warning",
+    "description": "A node reports a type no schema file describes",
+    "cause": ""
+   }
+  ]
+ },
+ "types": [
+  {
+   "name": "esp32_bench",
+   "type_id": 2,
+   "version": 1,
+   "description": "Bench test board reporting its own chip temperature, memory and CAN counters.",
+   "wire_hash": 1126658059,
+   "enums": {},
+   "messages": [
+    {
+     "name": "status",
+     "port": 64,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 8,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 10.0,
+      "min": 0.0,
+      "max": 50.0
+     },
+     "description": "How the board itself is doing",
+     "fields": [
+      {
+       "name": "chip_temp",
+       "type": "i16",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "degC",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "free_heap",
+       "type": "u16",
+       "start_bit": 16,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "KiB",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "rx_frames",
+       "type": "u16",
+       "start_bit": 32,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "low 16 bits of frames received"
+      },
+      {
+       "name": "tx_frames",
+       "type": "u16",
+       "start_bit": 48,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "low 16 bits of frames sent and acknowledged"
+      }
+     ]
+    }
+   ],
+   "params": [],
+   "actions": [
+    {
+     "index": 1,
+     "name": "blink",
+     "arg": "u8",
+     "arg_min": 1.0,
+     "arg_max": 60.0,
+     "arg_unit": "s",
+     "disarmed_only": false,
+     "description": "Blink the LED for this many seconds"
+    }
+   ],
+   "events": []
+  },
+  {
+   "name": "motor_controller",
+   "type_id": 100,
+   "version": 1,
+   "description": "Example two-channel velocity / duty motor controller.",
+   "wire_hash": 2394407626,
+   "enums": {
+    "mode": {
+     "coast": 0,
+     "brake": 1,
+     "velocity": 2,
+     "duty": 3
+    }
+   },
+   "messages": [
+    {
+     "name": "power",
+     "port": 200,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 4,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 5.0,
+      "min": 0.0,
+      "max": 50.0
+     },
+     "description": "Supply voltage and current",
+     "fields": [
+      {
+       "name": "voltage",
+       "type": "u16",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 0.001,
+       "offset": 0.0,
+       "unit": "V",
+       "min": 0.0,
+       "max": 65.535,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "current",
+       "type": "i16",
+       "start_bit": 16,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "A",
+       "min": -327.68,
+       "max": 327.67,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    },
+    {
+     "name": "setpoint",
+     "port": 64,
+     "priority": 1,
+     "sender": "leader",
+     "kind": "command",
+     "length": 7,
+     "watchdog_ms": 100,
+     "apply": "sync",
+     "rate": null,
+     "description": "What each channel should do",
+     "fields": [
+      {
+       "name": "mode",
+       "type": "u8",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": {
+        "name": "mode",
+        "values": {
+         "coast": 0,
+         "brake": 1,
+         "velocity": 2,
+         "duty": 3
+        }
+       },
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "target",
+       "type": "i16",
+       "start_bit": 8,
+       "count": 2,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "rad/s",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "speed in velocity mode, or 0.01 % duty in duty mode"
+      },
+      {
+       "name": "accel_limit",
+       "type": "u16",
+       "start_bit": 40,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "rad/s^2",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "0 = parameter default"
+      }
+     ]
+    },
+    {
+     "name": "feedback",
+     "port": 65,
+     "priority": 2,
+     "sender": "node",
+     "kind": "stream",
+     "length": 7,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 50.0,
+      "min": 0.0,
+      "max": 200.0
+     },
+     "description": "Measured speed and current per channel",
+     "fields": [
+      {
+       "name": "speed",
+       "type": "i16",
+       "start_bit": 0,
+       "count": 2,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "rad/s",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "current",
+       "type": "u8",
+       "start_bit": 32,
+       "count": 2,
+       "scale": 0.2,
+       "offset": 0.0,
+       "unit": "A",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "fault",
+       "type": "u8",
+       "start_bit": 48,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "bitmask, see the events"
+      }
+     ]
+    },
+    {
+     "name": "position",
+     "port": 66,
+     "priority": 2,
+     "sender": "node",
+     "kind": "stream",
+     "length": 8,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 50.0,
+      "min": 0.0,
+      "max": 200.0
+     },
+     "description": "",
+     "fields": [
+      {
+       "name": "counts",
+       "type": "i32",
+       "start_bit": 0,
+       "count": 2,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "raw encoder counts"
+      }
+     ]
+    },
+    {
+     "name": "thermal",
+     "port": 67,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 6,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 1.0,
+      "min": 0.0,
+      "max": 10.0
+     },
+     "description": "",
+     "fields": [
+      {
+       "name": "driver_temp",
+       "type": "i8",
+       "start_bit": 0,
+       "count": 2,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "degC",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "duty",
+       "type": "i16",
+       "start_bit": 16,
+       "count": 2,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "%",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    }
+   ],
+   "params": [
+    {
+     "index": 3584,
+     "name": "undervoltage_v",
+     "type": "f32",
+     "default": 10.5,
+     "min": 0.0,
+     "max": 60.0,
+     "unit": "V",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "power",
+     "enum": null,
+     "description": "Raise undervoltage below this"
+    },
+    {
+     "index": 3585,
+     "name": "overvoltage_v",
+     "type": "f32",
+     "default": 30.0,
+     "min": 0.0,
+     "max": 60.0,
+     "unit": "V",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "power",
+     "enum": null,
+     "description": "Raise overvoltage above this"
+    },
+    {
+     "index": 0,
+     "name": "kp_0",
+     "type": "f32",
+     "default": 10.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "pid",
+     "enum": null,
+     "description": "Velocity loop P gain per channel"
+    },
+    {
+     "index": 1,
+     "name": "kp_1",
+     "type": "f32",
+     "default": 10.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "pid",
+     "enum": null,
+     "description": "Velocity loop P gain per channel"
+    },
+    {
+     "index": 2,
+     "name": "ki_0",
+     "type": "f32",
+     "default": 1.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "pid",
+     "enum": null,
+     "description": "Velocity loop I gain per channel"
+    },
+    {
+     "index": 3,
+     "name": "ki_1",
+     "type": "f32",
+     "default": 1.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "pid",
+     "enum": null,
+     "description": "Velocity loop I gain per channel"
+    },
+    {
+     "index": 4,
+     "name": "kd_0",
+     "type": "f32",
+     "default": 0.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "pid",
+     "enum": null,
+     "description": "Velocity loop D gain per channel"
+    },
+    {
+     "index": 5,
+     "name": "kd_1",
+     "type": "f32",
+     "default": 0.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "pid",
+     "enum": null,
+     "description": "Velocity loop D gain per channel"
+    },
+    {
+     "index": 16,
+     "name": "max_speed",
+     "type": "f32",
+     "default": 50.0,
+     "min": 0.0,
+     "max": 300.0,
+     "unit": "rad/s",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "limits",
+     "enum": null,
+     "description": "Targets are clamped to this"
+    },
+    {
+     "index": 17,
+     "name": "max_current",
+     "type": "f32",
+     "default": 15.0,
+     "min": 0.0,
+     "max": 50.0,
+     "unit": "A",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "limits",
+     "enum": null,
+     "description": "Overcurrent above this"
+    },
+    {
+     "index": 18,
+     "name": "default_accel",
+     "type": "f32",
+     "default": 100.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "rad/s^2",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "limits",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 32,
+     "name": "counts_per_rev",
+     "type": "u32",
+     "default": 4096.0,
+     "min": 1.0,
+     "max": 1000000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "hardware",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 33,
+     "name": "invert_0",
+     "type": "bool",
+     "default": 0.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "hardware",
+     "enum": null,
+     "description": "Reverse a channel's direction"
+    },
+    {
+     "index": 34,
+     "name": "invert_1",
+     "type": "bool",
+     "default": 0.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "hardware",
+     "enum": null,
+     "description": "Reverse a channel's direction"
+    },
+    {
+     "index": 48,
+     "name": "loop_hz",
+     "type": "u16",
+     "default": 1000.0,
+     "min": 100.0,
+     "max": 5000.0,
+     "unit": "Hz",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": true,
+     "group": "hardware",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 64,
+     "name": "total_runtime_s",
+     "type": "u32",
+     "default": 0.0,
+     "min": null,
+     "max": null,
+     "unit": "s",
+     "access": "ro",
+     "persist": false,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": "Time spent armed since manufacture"
+    }
+   ],
+   "actions": [
+    {
+     "index": 1,
+     "name": "zero_counts",
+     "arg": null,
+     "arg_min": null,
+     "arg_max": null,
+     "arg_unit": "",
+     "disarmed_only": false,
+     "description": "Reset both encoder counts to 0"
+    },
+    {
+     "index": 2,
+     "name": "jog",
+     "arg": "f32",
+     "arg_min": -10.0,
+     "arg_max": 10.0,
+     "arg_unit": "rad/s",
+     "disarmed_only": true,
+     "description": "Spin channel 0 slowly for a second (bench test)"
+    },
+    {
+     "index": 3,
+     "name": "autotune",
+     "arg": "u8",
+     "arg_min": null,
+     "arg_max": null,
+     "arg_unit": "",
+     "disarmed_only": true,
+     "description": "Tune the PID of channel N"
+    }
+   ],
+   "events": [
+    {
+     "code": 32257,
+     "name": "supply_low",
+     "severity": "error",
+     "description": "Supply below undervoltage_v (detail = mV)",
+     "cause": ""
+    },
+    {
+     "code": 32258,
+     "name": "supply_high",
+     "severity": "error",
+     "description": "Supply above overvoltage_v (detail = mV)",
+     "cause": ""
+    },
+    {
+     "code": 16385,
+     "name": "overcurrent",
+     "severity": "error",
+     "description": "Current above max_current (detail = channel)",
+     "cause": ""
+    },
+    {
+     "code": 16386,
+     "name": "driver_fault",
+     "severity": "error",
+     "description": "The motor driver reported a fault",
+     "cause": ""
+    },
+    {
+     "code": 16387,
+     "name": "stall",
+     "severity": "warning",
+     "description": "Commanded but not moving (detail = channel)",
+     "cause": ""
+    },
+    {
+     "code": 16388,
+     "name": "encoder_silent",
+     "severity": "error",
+     "description": "Driving but no encoder counts (detail = channel)",
+     "cause": ""
+    },
+    {
+     "code": 16389,
+     "name": "overtemp",
+     "severity": "error",
+     "description": "Driver too hot (detail = degC)",
+     "cause": ""
+    }
+   ]
+  },
+  {
+   "name": "analog_sensor",
+   "type_id": 101,
+   "version": 1,
+   "description": "Example four-channel analog sensor board with two monitored supply rails.",
+   "wire_hash": 11887218,
+   "enums": {},
+   "messages": [
+    {
+     "name": "main_power",
+     "port": 200,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 4,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 5.0,
+      "min": 0.0,
+      "max": 50.0
+     },
+     "description": "Supply voltage and current",
+     "fields": [
+      {
+       "name": "voltage",
+       "type": "u16",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 0.001,
+       "offset": 0.0,
+       "unit": "V",
+       "min": 0.0,
+       "max": 65.535,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "current",
+       "type": "i16",
+       "start_bit": 16,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "A",
+       "min": -327.68,
+       "max": 327.67,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    },
+    {
+     "name": "aux_power",
+     "port": 201,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 4,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 5.0,
+      "min": 0.0,
+      "max": 50.0
+     },
+     "description": "Supply voltage and current",
+     "fields": [
+      {
+       "name": "voltage",
+       "type": "u16",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 0.001,
+       "offset": 0.0,
+       "unit": "V",
+       "min": 0.0,
+       "max": 65.535,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "current",
+       "type": "i16",
+       "start_bit": 16,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "A",
+       "min": -327.68,
+       "max": 327.67,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    },
+    {
+     "name": "readings",
+     "port": 64,
+     "priority": 2,
+     "sender": "node",
+     "kind": "stream",
+     "length": 8,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 20.0,
+      "min": 0.0,
+      "max": 100.0
+     },
+     "description": "Calibrated readings, one per channel",
+     "fields": [
+      {
+       "name": "value",
+       "type": "i16",
+       "start_bit": 0,
+       "count": 4,
+       "scale": 0.001,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": "units depend on the sensor"
+      }
+     ]
+    },
+    {
+     "name": "raw",
+     "port": 65,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 8,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 0.0,
+      "min": 0.0,
+      "max": 100.0
+     },
+     "description": "Raw ADC counts",
+     "fields": [
+      {
+       "name": "adc",
+       "type": "u12",
+       "start_bit": 0,
+       "count": 4,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "overrange",
+       "type": "bool",
+       "start_bit": 48,
+       "count": 4,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "reserved",
+       "type": "u12",
+       "start_bit": 52,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    }
+   ],
+   "params": [
+    {
+     "index": 3584,
+     "name": "main_undervoltage_v",
+     "type": "f32",
+     "default": 10.5,
+     "min": 0.0,
+     "max": 60.0,
+     "unit": "V",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "power",
+     "enum": null,
+     "description": "Raise undervoltage below this"
+    },
+    {
+     "index": 3585,
+     "name": "main_overvoltage_v",
+     "type": "f32",
+     "default": 30.0,
+     "min": 0.0,
+     "max": 60.0,
+     "unit": "V",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "power",
+     "enum": null,
+     "description": "Raise overvoltage above this"
+    },
+    {
+     "index": 3600,
+     "name": "aux_undervoltage_v",
+     "type": "f32",
+     "default": 10.5,
+     "min": 0.0,
+     "max": 60.0,
+     "unit": "V",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "power",
+     "enum": null,
+     "description": "Raise undervoltage below this"
+    },
+    {
+     "index": 3601,
+     "name": "aux_overvoltage_v",
+     "type": "f32",
+     "default": 30.0,
+     "min": 0.0,
+     "max": 60.0,
+     "unit": "V",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "power",
+     "enum": null,
+     "description": "Raise overvoltage above this"
+    },
+    {
+     "index": 0,
+     "name": "gain_0",
+     "type": "f32",
+     "default": 1.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": "reading = adc * gain + offset"
+    },
+    {
+     "index": 1,
+     "name": "gain_1",
+     "type": "f32",
+     "default": 1.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": "reading = adc * gain + offset"
+    },
+    {
+     "index": 2,
+     "name": "gain_2",
+     "type": "f32",
+     "default": 1.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": "reading = adc * gain + offset"
+    },
+    {
+     "index": 3,
+     "name": "gain_3",
+     "type": "f32",
+     "default": 1.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": "reading = adc * gain + offset"
+    },
+    {
+     "index": 4,
+     "name": "offset_0",
+     "type": "f32",
+     "default": 0.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 5,
+     "name": "offset_1",
+     "type": "f32",
+     "default": 0.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 6,
+     "name": "offset_2",
+     "type": "f32",
+     "default": 0.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 7,
+     "name": "offset_3",
+     "type": "f32",
+     "default": 0.0,
+     "min": -1000.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "calibration",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 8,
+     "name": "enabled_0",
+     "type": "bool",
+     "default": 1.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "channels",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 9,
+     "name": "enabled_1",
+     "type": "bool",
+     "default": 1.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "channels",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 10,
+     "name": "enabled_2",
+     "type": "bool",
+     "default": 1.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "channels",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 11,
+     "name": "enabled_3",
+     "type": "bool",
+     "default": 1.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "channels",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 12,
+     "name": "filter_hz",
+     "type": "u16",
+     "default": 50.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "Hz",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": "Low-pass corner, 0 = off"
+    }
+   ],
+   "actions": [
+    {
+     "index": 1,
+     "name": "tare",
+     "arg": "u8",
+     "arg_min": null,
+     "arg_max": null,
+     "arg_unit": "",
+     "disarmed_only": false,
+     "description": "Make channel N read 0 now (updates its offset)"
+    }
+   ],
+   "events": [
+    {
+     "code": 32257,
+     "name": "main_supply_low",
+     "severity": "error",
+     "description": "Supply below undervoltage_v (detail = mV)",
+     "cause": ""
+    },
+    {
+     "code": 32258,
+     "name": "main_supply_high",
+     "severity": "error",
+     "description": "Supply above overvoltage_v (detail = mV)",
+     "cause": ""
+    },
+    {
+     "code": 32273,
+     "name": "aux_supply_low",
+     "severity": "error",
+     "description": "Supply below undervoltage_v (detail = mV)",
+     "cause": ""
+    },
+    {
+     "code": 32274,
+     "name": "aux_supply_high",
+     "severity": "error",
+     "description": "Supply above overvoltage_v (detail = mV)",
+     "cause": ""
+    },
+    {
+     "code": 16385,
+     "name": "sensor_missing",
+     "severity": "error",
+     "description": "A channel reads open circuit (detail = channel)",
+     "cause": ""
+    }
+   ]
+  }
+ ]
+}

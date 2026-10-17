@@ -3,6 +3,12 @@
 **Every node is an ESP32 (WROOM or S3).** STM32 support was removed on 2026-10-18; the STM32
 sections of `docs/architecture.md` are historical. Don't add STM32 code back.
 
+**New code is built on the libraries (branch `next`, see README.md).** Everything on the bus is
+described in `schema/` (format: `schema/README.md`) and code is generated from it with
+`anv-schema gen`. Never write message layouts, ports, parameter indices or event codes by hand,
+and never hardcode how many nodes there are or what IDs they have: types are data, IDs are
+assigned at run time. `defs/` is the old (11-bit) system and goes away once the apps move over.
+
 The full design is in `docs/architecture.md`. It is the spec. Read only the sections your
 prompt names; don't read the whole file unless the prompt says so.
 
@@ -22,7 +28,18 @@ prompt names; don't read the whole file unless the prompt says so.
   code anyway, make it compile where possible, and add or extend the GitHub Actions workflow
   so CI builds and tests it. Note this in the PR.
 
-## Fixed design decisions (don't change these)
+## Library tasks (`prompts/v2/`)
+
+New library work follows `prompts/v2/README.md` and the **Schema rules** below: 29-bit
+extended IDs, everything generated from `schema/`. Bitrate, cycle rate and watchdog timeout
+are settings with defaults (500 kbps, 50 Hz, 100 ms), not constants. The safety rules still
+apply: outputs off by default, disarm on command timeout, on leader change and on fault;
+E-stop always works.
+
+## Old system (`defs/` and the current apps only)
+
+These describe the existing 11-bit apps (gateway, dashboard, ROS, simulator, bench sketch).
+Keep them working, but don't use these for new library code.
 
 - Classic CAN 2.0A, 11-bit IDs, 8-byte payloads, **500 kbps**, sample point ~80%.
 - Control cycle **50 Hz** (SYNC every 20 ms). Node command watchdog **100 ms**.
@@ -40,7 +57,8 @@ prompt names; don't read the whole file unless the prompt says so.
 ## Repository layout
 
 ```
-defs/                      shared definitions (owned by P0; changes need a note in the PR)
+schema/                    THE definitions: protocol.yaml, types/, fragments/, generated/
+defs/                      old 11-bit definitions, still used by the current apps
   rover.dbc                all CAN messages
   errors.yaml              error-code registry
   params/<node_type>.yaml  parameter tables
@@ -52,6 +70,7 @@ firmware/                  person A
   nodes/bench_esp32_arduino/  ESP32 (WROOM / S3) node sketch, Arduino
   tests/                   host-side unit tests (run on Linux with the loopback driver)
 host/                      person B
+  python/anv_schema/       schema loader, codec, generators, `anv-schema` CLI
   gateway/                 C++17 core library, no ROS dependency
   ros2/anveshak_can_ros/   ROS 2 node wrapping the gateway (Humble + Jazzy)
   ros2/anveshak_can_msgs/  ROS 2 messages and services
@@ -62,6 +81,14 @@ dashboard/                 person B
   frontend/                Svelte + uPlot
 .github/workflows/         CI
 ```
+
+## Schema rules
+
+- 29-bit IDs: priority(3) | dst(8) | port(10) | src(8), from `schema/protocol.yaml`.
+- Ports 0-63 are the protocol's; node types use 64-1023. Parameter indices 0xF000+ are the
+  protocol's common parameters. Event codes 0x4000-0x7FFF are per node type.
+- After changing anything in `schema/`: `anv-schema check && anv-schema gen`, commit
+  `schema/generated/`. CI fails if it's stale.
 
 ## Testing
 

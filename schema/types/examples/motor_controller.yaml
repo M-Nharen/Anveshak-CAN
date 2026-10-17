@@ -1,0 +1,89 @@
+# EXAMPLE: a two-channel motor controller. Not part of any rover yet; it shows how a real
+# actuator node is described: a command with a watchdog applied in sync with other nodes,
+# fast and slow feedback streams, tunable parameters (some per channel), actions, events,
+# and a fragment pulled in with `include`.
+#
+# Change `channels` below (the `count` values) and every layout, struct and table follows.
+name: motor_controller
+type_id: 100
+version: 1
+description: Example two-channel velocity / duty motor controller.
+
+include:
+  - power_monitor.yaml
+
+enums:
+  mode: [coast, brake, velocity, duty]       # list form: coast=0, brake=1, ...
+
+messages:
+  - name: setpoint
+    port: 64
+    kind: command
+    watchdog_ms: 100          # outputs stop if no setpoint for this long (a param can shorten it)
+    apply: sync               # held until the next SYNC, so every node changes together
+    description: What each channel should do
+    fields:
+      - {name: mode, type: u8, enum: mode}
+      - {name: target, type: i16, count: 2, scale: 0.01, unit: rad/s,
+         description: "speed in velocity mode, or 0.01 % duty in duty mode"}
+      - {name: accel_limit, type: u16, scale: 0.01, unit: rad/s^2, description: 0 = parameter default}
+
+  - name: feedback
+    port: 65
+    kind: stream
+    rate: {default: 50, min: 0, max: 200}
+    description: Measured speed and current per channel
+    fields:
+      - {name: speed, type: i16, count: 2, scale: 0.01, unit: rad/s}
+      - {name: current, type: u8, count: 2, scale: 0.2, unit: A}
+      - {name: fault, type: u8, description: "bitmask, see the events"}
+
+  - name: position
+    port: 66
+    kind: stream
+    rate: {default: 50, min: 0, max: 200}
+    fields:
+      - {name: counts, type: i32, count: 2, description: raw encoder counts}
+
+  - name: thermal
+    port: 67
+    kind: stream
+    rate: {default: 1, min: 0, max: 10}
+    fields:
+      - {name: driver_temp, type: i8, count: 2, unit: degC}
+      - {name: duty, type: i16, count: 2, scale: 0.01, unit: "%"}
+
+params:
+  - {index: 0x0000, name: kp, type: f32, count: 2, min: 0, max: 1000, default: 10,
+     disarmed_only: true, group: pid, description: Velocity loop P gain per channel}
+  - {index: 0x0002, name: ki, type: f32, count: 2, min: 0, max: 1000, default: 1,
+     disarmed_only: true, group: pid, description: Velocity loop I gain per channel}
+  - {index: 0x0004, name: kd, type: f32, count: 2, min: 0, max: 1000, default: 0,
+     disarmed_only: true, group: pid, description: Velocity loop D gain per channel}
+  - {index: 0x0010, name: max_speed, type: f32, min: 0, max: 300, default: 50, unit: rad/s,
+     group: limits, description: Targets are clamped to this}
+  - {index: 0x0011, name: max_current, type: f32, min: 0, max: 50, default: 15, unit: A,
+     group: limits, description: Overcurrent above this}
+  - {index: 0x0012, name: default_accel, type: f32, min: 0, max: 1000, default: 100,
+     unit: rad/s^2, group: limits}
+  - {index: 0x0020, name: counts_per_rev, type: u32, min: 1, max: 1000000, default: 4096,
+     disarmed_only: true, group: hardware}
+  - {index: 0x0021, name: invert, type: bool, count: 2, default: 0, disarmed_only: true,
+     group: hardware, description: Reverse a channel's direction}
+  - {index: 0x0030, name: loop_hz, type: u16, min: 100, max: 5000, default: 1000, unit: Hz,
+     reboot_required: true, group: hardware}
+  - {index: 0x0040, name: total_runtime_s, type: u32, access: ro, unit: s, default: 0,
+     description: Time spent armed since manufacture}
+
+actions:
+  - {index: 1, name: zero_counts, description: Reset both encoder counts to 0}
+  - {index: 2, name: jog, arg: {type: f32, min: -10, max: 10, unit: rad/s}, disarmed_only: true,
+     description: Spin channel 0 slowly for a second (bench test)}
+  - {index: 3, name: autotune, arg: u8, disarmed_only: true, description: Tune the PID of channel N}
+
+events:
+  - {code: 0x4001, name: overcurrent, severity: error, description: "Current above max_current (detail = channel)"}
+  - {code: 0x4002, name: driver_fault, severity: error, description: The motor driver reported a fault}
+  - {code: 0x4003, name: stall, severity: warning, description: "Commanded but not moving (detail = channel)"}
+  - {code: 0x4004, name: encoder_silent, severity: error, description: "Driving but no encoder counts (detail = channel)"}
+  - {code: 0x4005, name: overtemp, severity: error, description: "Driver too hot (detail = degC)"}

@@ -1,0 +1,45 @@
+# EXAMPLE: a board with several analog sensors (say, a science payload). Shows per-channel
+# calibration parameters and a node that pulls in the power fragment twice, once per rail.
+name: analog_sensor
+type_id: 101
+version: 1
+description: Example four-channel analog sensor board with two monitored supply rails.
+
+include:
+  - {file: power_monitor.yaml, prefix: main_}
+  - {file: power_monitor.yaml, prefix: aux_, port_offset: 1, index_offset: 0x10,
+     event_offset: 0x10}
+
+messages:
+  - name: readings
+    port: 64
+    kind: stream
+    rate: {default: 20, min: 0, max: 100}
+    description: Calibrated readings, one per channel
+    fields:
+      - {name: value, type: i16, count: 4, scale: 0.001, description: units depend on the sensor}
+
+  - name: raw
+    port: 65
+    kind: stream
+    rate: {default: 0, min: 0, max: 100}     # off unless someone turns it on (debugging)
+    description: Raw ADC counts
+    fields:
+      - {name: adc, type: u12, count: 4}
+      - {name: overrange, type: bool, count: 4}
+      - {name: reserved, type: u12}
+
+params:
+  - {index: 0x0000, name: gain, type: f32, count: 4, min: -1000, max: 1000, default: 1,
+     group: calibration, description: "reading = adc * gain + offset"}
+  - {index: 0x0004, name: offset, type: f32, count: 4, min: -1000, max: 1000, default: 0,
+     group: calibration}
+  - {index: 0x0008, name: enabled, type: bool, count: 4, default: 1, group: channels}
+  - {index: 0x000C, name: filter_hz, type: u16, min: 0, max: 1000, default: 50, unit: Hz,
+     description: "Low-pass corner, 0 = off"}
+
+actions:
+  - {index: 1, name: tare, arg: u8, description: "Make channel N read 0 now (updates its offset)"}
+
+events:
+  - {code: 0x4001, name: sensor_missing, severity: error, description: "A channel reads open circuit (detail = channel)"}
