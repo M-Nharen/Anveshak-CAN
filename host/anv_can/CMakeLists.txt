@@ -36,7 +36,12 @@ target_link_libraries(anv_proto PUBLIC anv_link)
 # Tools built from the tree find the schema without being told; installed ones use $ANV_SCHEMA_JSON.
 target_compile_definitions(anv_proto PRIVATE ANV_SCHEMA_JSON_DEFAULT="${ANV_SCHEMA_JSON}")
 
-foreach(lib anv_link anv_proto)
+# anv_host: node discovery, ID assignment, leader election, and the clients for settings,
+# rates, commands, actions, arm/disarm and E-stop.
+add_library(anv_host STATIC src/host/election.cpp src/host/registry.cpp src/host/allocator.cpp src/host/host.cpp)
+target_link_libraries(anv_host PUBLIC anv_proto)
+
+foreach(lib anv_link anv_proto anv_host)
   target_compile_options(${lib} PRIVATE ${ANV_WARNINGS})
   if(ANV_WERROR)
     target_compile_options(${lib} PRIVATE -Werror)
@@ -52,8 +57,8 @@ endif()
 if(ANV_CAN_PYTHON)
   find_package(Python 3.10 COMPONENTS Interpreter Development.Module REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
-  pybind11_add_module(_anv_can MODULE python/bindings.cpp)
-  target_link_libraries(_anv_can PRIVATE anv_proto)
+  pybind11_add_module(_anv_can MODULE python/bindings.cpp python/host_bindings.cpp)
+  target_link_libraries(_anv_can PRIVATE anv_host)
   target_compile_options(_anv_can PRIVATE -Wall -Wextra)
   install(TARGETS _anv_can DESTINATION anv_can)
   # The wheel carries the schema it was built with, so it works away from the source tree.

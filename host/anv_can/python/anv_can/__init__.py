@@ -10,6 +10,15 @@
 
 Values are physical (scaled, enum labels) by default; raw=True gives the wire integers, the
 same as anv_schema's Python codec, and the bytes match the ESP32's generated C exactly.
+
+Host (anv_host) is a brain on the bus: discovery, ID assignment, leader election and the
+clients for settings, stream rates, commands, actions, arm/disarm and E-stop:
+
+    host = anv_can.Host(link, s, host_id=1)
+    host.set_callbacks(node_appeared=lambda n, returned: print(n))
+    host.start()
+    host.wait_for_node(20, 2000)
+    host.set(20, "heartbeat_hz", 20)
 """
 from __future__ import annotations
 
@@ -22,11 +31,15 @@ from ._anv_can import (  # noqa: F401
     CodecError,
     Field,
     Frame,
+    Host,
+    HostError,
     IsoTpChannel,
     IsoTpError,
     Link,
     Message,
+    NodeInfo,
     NodeType,
+    PeerHost,
     Schema,
     TestBus,
     decode,
@@ -87,3 +100,11 @@ def decode_frame(schema: Schema, can_id: int, data: bytes, node_type: NodeType |
         except CodecError as e:
             error = str(e)
     return DecodedFrame(can_id, p["priority"], p["src"], p["dst"], p["port"], msg, values, error)
+
+
+def enum_label(schema: Schema, enum: str, value: int) -> str:
+    """A protocol enum's label for value (e.g. node_state 3 -> "armed"), or the number."""
+    for label, number in schema.protocol.enums.get(enum, {}).items():
+        if number == value:
+            return label
+    return str(value)

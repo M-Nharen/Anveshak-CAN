@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "anv-can"
 version = "0.1.0"
-description = "Anveshak CAN host library (anv_link + anv_proto, C++) with Python bindings and the anv-can tool"
+description = "Anveshak CAN host library (anv_link + anv_proto + anv_host, C++) with Python bindings and the anv-can and anv-host tools"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
@@ -14,6 +14,7 @@ test = ["pytest>=7"]
 
 [project.scripts]
 anv-can = "anv_can.cli:main"
+anv-host = "anv_can.host_cli:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."
