@@ -24,7 +24,7 @@ RPi + CAN HAT can1 (120 Ω on) ──── ESP32 #1 ──── ESP32 #2 ─�
 4. **TCAN transceivers.** STB is tied to GND (normal mode). If yours are TCAN1044-type parts, VCC
    needs **5 V** and VIO 3.3 V. 3.3 V-only TCAN parts just need 3.3 V.
 5. ESP TX → transceiver TXD, ESP RX → RXD. Pins are in the sketch's `board_pins.h`:
-   S3 = TX 16 / RX 15, WROOM = TX 5 / RX 4.
+   S3 = TX 16 / RX 15, WROOM = TX 4 / RX 5.
 
 ## 2. Set up the RPi (once)
 
