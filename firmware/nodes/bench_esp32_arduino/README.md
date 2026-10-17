@@ -89,7 +89,11 @@ calls them from its `setup` and `loop` hooks, so the board stays a live node whi
 The file ships with a 5 s on / 5 s off LED blink: set `USER_BLINK_DEMO` to 1 and flash. Never use
 `delay()` there; use `now_ms`, because a blocked loop stops the board's CAN traffic.
 
-## Not done yet
+## Flashing over CAN and diagnostics
 
-- Flashing over CAN and error events come with the v2 update and diagnostics work (L5). Until then,
-  flash over USB.
+Built into `anv_node` (`cfg.ota = anv_node_ota_esp32_backend();` in this sketch's `setup()`), so
+nothing in `user_app.cpp` has to do anything for it. From a host: `anv-flash flash <iface> <node>
+firmware.bin` (host/anv_can's README); a deliberately broken image, or one that crashes before it
+confirms itself, rolls back to the previous image on its own. Error events and the black box
+(`anv_node_event()`, `anv-flash log`) work the same way — see `firmware/lib/anv_node/README.md`.
+USB still works exactly as before; CAN just means you don't have to unplug the board.

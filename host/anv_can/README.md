@@ -17,7 +17,7 @@ widths, ports, layouts, enums. Nothing here knows how many nodes there are or wh
 | `anv/host/election.hpp` | Leader election rules, pure logic with a fake clock |
 | `anv/host/registry.hpp` | Node registry: discovery from heartbeats, type lookup, schema check, online/offline |
 | `anv/host/allocator.hpp` | ID assignment server: MAC -> ID table kept in a text file |
-| `python/` | pybind11 module `anv_can` and the `anv-can` and `anv-host` tools |
+| `python/` | pybind11 module `anv_can` and the `anv-can`, `anv-host` and `anv-flash` tools |
 
 Frames are byte-identical to the ESP32 side: `tests/test_proto.cpp` compares against the
 generated C, and `python/tests/test_cross_check.py` compares every message with random vectors
@@ -90,7 +90,7 @@ looked up in the schema by `type_id`.
   by name or index), `get_rate`/`set_rate` (Hz), `action`, `info`; checked against the schema
   (limits, read-only, types) before anything is sent. Leader only: `send_command`,
   `set_command` (kept refreshed at `command_hz` until `stop_command`; dropped on losing the lead
-  or E-stop), `arm`/`disarm`/`nmt`, `estop_release`. Anyone: `estop`.
+  or E-stop), `arm`/`disarm`/`nmt`, `estop_release`, `set_debug_level`. Anyone: `estop`.
 - **Callbacks** (set before `start()`): node appeared/lost/rebooted/state, telemetry (decoded
   streams and events of a node's own type), node events, setting changed (any host's SET),
   role/leader changed, leader lost, two leaders, ID assigned, E-stop.
@@ -127,7 +127,34 @@ anv-host command vcan0 20 setpoint mode=velocity "target=[1,1]" --take-lead --ar
 anv-host disarm vcan0 all --take-lead
 anv-host estop vcan0 [--release --take-lead]
 anv-host lead vcan0 2                        # ask host 2 to lead
+anv-host debug vcan0 20 2 --take-lead        # debug level 2 on node 20 (0-3)
+anv-host events vcan0                        # watch error events from every node, Ctrl-C to stop
 ```
 
 The tool is a host with ID `--host-id` (default `$ANV_HOST_ID`, else 250) that never hands out
 IDs. Taking the lead disarms every node (new term); when the tool exits, nodes it armed disarm.
+
+## `anv-flash`
+
+Firmware updates and a node's black box, over the schema's `transfer` port
+(`firmware/lib/anv_node`'s `anv_node_ota.h` / `anv_node_diag.h` on the other end). Built directly
+on `anv_can.IsoTpChannel`, not on `Host`'s client calls, since OTA needs no leader (only that the
+node is disarmed) and moves far more than one SERVICE frame at a time. This is **not** the older
+`host/tools/anv_flash` (STM32/ESP32 class-7 bootloader protocol, `defs/`-based); that stays for
+the current apps, per `CLAUDE.md`.
+
+```sh
+anv-flash list vcan0                               # nodes: type, state, firmware build, chip
+anv-flash flash vcan0 20 firmware.bin               # one node
+anv-flash flash vcan0 type:esp32_bench firmware.bin # every node of that type, one at a time
+anv-flash flash vcan0 20,21,22 firmware.bin         # a list
+anv-flash flash vcan0 20 firmware.bin --force       # clear a session stuck mid-update first
+anv-flash log vcan0 20                              # the node's black box
+```
+
+Flashing: BEGIN (type_id, chip, length, CRC-32) is refused if the node is armed or the type/chip
+doesn't match; DATA chunks are ACKed with the next expected offset (`--chunk`, default 2048
+bytes); END checks the CRC-32 and, if it matches, the node applies the image and reboots. The new
+image is on probation (`anv_node`'s own confirm timer) until it proves itself; if it never does,
+the next boot rolls back on its own — `anv-flash` doesn't need to do anything for that part.
+`--force` sends ABORT first, for a node left mid-update by an earlier failed attempt.

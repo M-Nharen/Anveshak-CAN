@@ -210,6 +210,8 @@ def cmd_flash(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO, li
         print("anv-flash: empty image", file=sys.stderr)
         return 2
     crc = zlib.crc32(image) & 0xFFFFFFFF
+    if a.target == "all" or a.target.startswith("type:"):
+        time.sleep(a.wait)  # a single node ID is already waited for in _flash_one
     targets = _resolve_targets(host, a.target)
     if not targets:
         print(f"anv-flash: no nodes match {a.target!r}", file=out)
@@ -289,19 +291,22 @@ def main(argv: list[str] | None = None, open_link=None, out: TextIO | None = Non
         print(f"anv-flash: {e}", file=sys.stderr)
         return 2
     try:
-        link = _open(open_link, a.interface)
+        # Two separate connections: Host's background thread reads continuously for discovery,
+        # which would otherwise race an ISO-TP transfer's own recv() for the same frames.
+        host_link = _open(open_link, a.interface)
+        transfer_link = _open(open_link, a.interface)
     except ValueError as e:
         print(f"anv-flash: {e}", file=sys.stderr)
         return 2
     # Discovery only: anv-flash never leads or arms anything.
-    host = Host(link, schema, host_id=a.tool_id, allocator="off", observer=True)
+    host = Host(host_link, schema, host_id=a.tool_id, allocator="off", observer=True)
     try:
         host.start()
         if a.cmd == "list":
             return cmd_list(host, schema, a, out)
         if a.cmd == "flash":
-            return cmd_flash(host, schema, a, out, link)
-        return cmd_log(host, schema, a, out, link)
+            return cmd_flash(host, schema, a, out, transfer_link)
+        return cmd_log(host, schema, a, out, transfer_link)
     except HostError as e:
         print(f"anv-flash: {e}", file=sys.stderr)
         return 1

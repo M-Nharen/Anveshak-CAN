@@ -31,6 +31,8 @@ class FakeNode:
         self.saves = 0
         self.debug_level = 0
         self.debug_sets = 0
+        self.info_pages = {"chip": 1, "fw_build": 0, "type_id": self.t.type_id,
+                           "schema_hash": self.t.schema_hash16}
         self.params: dict[int, int] = {}
         for p in list(self.t.params) + list(self.s.protocol.params):
             self.params[p.index] = self._wire(p.type, p.default or 0)
@@ -147,6 +149,13 @@ class FakeNode:
             self.rates[index] = v["value"]
         elif op == ops["action"]:
             self.actions.append((index, v["value"]))
+        elif op == ops["info"]:
+            pages = self.s.protocol.enums["info_page"]
+            name = next((n for n, i in pages.items() if i == index), None)
+            if name is None or name not in self.info_pages:
+                status = "bad_index"
+            else:
+                v["value"] = self.info_pages[name]
         else:
             status = "bad_op"
         v["status"] = _label(self.s, "service_status", status)
