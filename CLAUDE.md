@@ -28,7 +28,18 @@ prompt names; don't read the whole file unless the prompt says so.
   code anyway, make it compile where possible, and add or extend the GitHub Actions workflow
   so CI builds and tests it. Note this in the PR.
 
-## Fixed design decisions (don't change these)
+## Library tasks (`prompts/v2/`)
+
+New library work follows `prompts/v2/README.md` and the **Schema rules** below: 29-bit
+extended IDs, everything generated from `schema/`. Bitrate, cycle rate and watchdog timeout
+are settings with defaults (500 kbps, 50 Hz, 100 ms), not constants. The safety rules still
+apply: outputs off by default, disarm on command timeout, on leader change and on fault;
+E-stop always works.
+
+## Old system (`defs/` and the current apps only)
+
+These describe the existing 11-bit apps (gateway, dashboard, ROS, simulator, bench sketch).
+Keep them working, but don't use these for new library code.
 
 - Classic CAN 2.0A, 11-bit IDs, 8-byte payloads, **500 kbps**, sample point ~80%.
 - Control cycle **50 Hz** (SYNC every 20 ms). Node command watchdog **100 ms**.

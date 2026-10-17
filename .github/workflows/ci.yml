@@ -6,7 +6,7 @@ on:
 
 jobs:
   schema:
-    name: Schema (anv_schema: validate, generated code current, C matches Python)
+    name: "Schema (anv_schema: validate, generated code current, C matches Python)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
