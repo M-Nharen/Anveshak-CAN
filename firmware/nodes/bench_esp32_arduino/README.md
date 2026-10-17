@@ -20,7 +20,7 @@ Command line: `arduino-cli compile --fqbn esp32:esp32:esp32s3 firmware/nodes/ben
 | Board | CAN TX | CAN RX | LED |
 | --- | --- | --- | --- |
 | ESP32-S3 DevKitC | GPIO 16 | GPIO 15 | RGB on GPIO 48 (38 on some revisions) |
-| WROOM DevKit | GPIO 5 | GPIO 4 | GPIO 2 |
+| WROOM DevKit | GPIO 4 | GPIO 5 | GPIO 2 |
 
 Wire ESP TX to the transceiver's TXD and ESP RX to its RXD; crossing them is the classic mistake. The TCAN's STB is tied to GND. If a board
 drives it from a GPIO instead, set `BENCH_TCAN_STB_GPIO`.
