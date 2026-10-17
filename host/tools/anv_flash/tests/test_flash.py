@@ -1,4 +1,5 @@
 import itertools
+import json
 import sys
 from pathlib import Path
 
@@ -137,3 +138,23 @@ def test_bench_rule_for_who_may_flash():
         check_allowed(state(alive=False), 16)
     with pytest.raises(FlashError, match="armed"):
         check_allowed(state(node_state=2), 16)
+
+
+def test_cli_flash_prints_json_progress_ending_in_done(channel, host, tmp_path, capsys):
+    import argparse
+
+    from anv_flash.cli import Reporter, run
+
+    node = node_on(channel)
+    try:
+        path = tmp_path / "bench_esp32_arduino.ino.bin"
+        path.write_bytes(make_image(build_id=0xCAFE))
+        args = argparse.Namespace(cmd="flash", node=16, file=str(path), json=True, no_gateway_check=True,
+                                  bridge="/nonexistent", channel=channel, interface="virtual")  # fmt: skip
+        run(args, host, Reporter(True))
+        events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        phases = [e["phase"] for e in events]
+        assert phases[0] == "check" and "write" in phases and phases[-1] == "done"
+        assert "cafe" in events[-1]["msg"]
+    finally:
+        node.close()

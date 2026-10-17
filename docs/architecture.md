@@ -853,6 +853,24 @@ The ESP32-S3 always runs Espressif's own second-stage bootloader, so there is no
 
 Limitation: because the application does the updating, an ESP32-S3 whose application can't run at all can't be updated over CAN. Rollback makes that very unlikely; the fallback is its USB port.
 
+**ESP32 update commands (bench node, Arduino)**
+
+The bench sketch (`firmware/nodes/bench_esp32_arduino/ota_can.cpp`) and `anv-flash` use these requests over ISO-TP on class 7. Every reply is a single frame `[command | 0x40, status, ...]`:
+
+| Command | Request after the command byte | Reply extras |
+| --- | --- | --- |
+| 0x01 INFO | Nothing | HW target, protocol version, running slot, update slot size in KB (u16) |
+| 0x02 BEGIN | Image size (u32), CRC-32 (u32), HW target (u8) | None |
+| 0x03 WRITE | Offset (u32), up to 2048 bytes | Next expected offset (u32) |
+| 0x04 VERIFY | Nothing | None. Checks size, CRC-32 and the image's own hash |
+| 0x05 COMMIT | Nothing | None. Makes the new slot the boot slot |
+| 0x06 BOOT | Nothing | None. Restarts about 200 ms after the reply |
+| 0x07 ABORT | Nothing | None |
+
+Statuses: 0 OK, 1 BAD\_STATE, 2 BAD\_ARG, 3 WRONG\_TARGET, 4 TOO\_BIG, 5 FLASH\_ERROR, 6 CRC\_MISMATCH, 7 ARMED, 8 BAD\_IMAGE, 9 UNKNOWN\_CMD.
+
+The node's flow control asks for at least 500 µs between consecutive frames, which keeps the bus about half free during a transfer. FW\_BUILD\_ID in the heartbeat is the first two bytes of the ELF SHA-256 that the build embeds at offset 0xB0 of the `.bin`, so the host can confirm the node runs the image it sent.
+
 **Wi-Fi updates for ESP32-S3 in the pit (optional)**
 
 If the rover network is up, the same application can fetch its new image over Wi-Fi (HTTP OTA) in a few seconds. Use this for quick development; keep CAN as the path that works on the field and in the competition configuration.

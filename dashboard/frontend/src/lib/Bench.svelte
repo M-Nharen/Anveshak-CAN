@@ -3,6 +3,7 @@
   // Shown full-screen with ?kiosk in the URL, or as the Bench tab in the normal dashboard.
   import { command, toast } from './socket.js';
   import Messages from './Messages.svelte';
+  import FlashDialog from './FlashDialog.svelte';
 
   export let data; // snapshot.bench
   export let header; // snapshot.header
@@ -75,6 +76,9 @@
   // Long-press a tile to free its ID in the RPi's table (for retiring or swapping a board).
   let pressTimer = null;
   let forgetting = null;
+  let flashing = null; // the node whose Flash dialog is open
+  $: flash = data?.flash ?? null;
+  $: flashNode = flash ? (data?.nodes ?? []).find((n) => n.node_id === flash.node_id) : null;
   function pressStart(n) {
     if (!n.mac) return; // only auto-addressed boards have a table entry
     pressTimer = setTimeout(() => (forgetting = n), 700);
@@ -89,6 +93,11 @@
 </script>
 
 <div class="bench">
+  {#if flash?.state === 'running'}
+    <button class="banner card" on:click={() => (flashing = flashNode ?? { node_id: flash.node_id, name: `NODE${flash.node_id}`, hw: '' })}>
+      Flashing NODE{flash.node_id} · {flash.phase} {flash.phase === 'write' ? `${Math.round(flash.pct)}%` : ''} · {flash.elapsed_s}s — tap for details
+    </button>
+  {/if}
   <div class="top card">
     <div class="count">
       {#if data}
@@ -123,6 +132,7 @@
     </div>
   </div>
 
+  <div class="view">
   {#if view === "messages"}
     <Messages nodes={data?.nodes ?? []} messages={data?.messages ?? []} {authed} />
   {:else}
@@ -161,7 +171,13 @@
             <div class="foot muted">
               <span>TEC/REC {n.tec}/{n.rec}</span>
               {#if n.mac}<span>{macTail(n.mac)}</span>{/if}
+              {#if n.alive && n.node_id >= 4}
+                <button class="flash-btn" on:pointerdown|stopPropagation on:click|stopPropagation={() => (flashing = n)}>Flash…</button>
+              {/if}
             </div>
+            {#if flash?.state === 'running' && flash.node_id === n.node_id}
+              <div class="tile-progress"><div style="width: {flash.pct}%"></div></div>
+            {/if}
             {#if n.health !== 'green' && n.reasons.length}<div class="reasons">{n.reasons.join(' · ')}</div>{/if}
           </div>
         {/each}
@@ -187,7 +203,12 @@
     </div>
   </div>
   {/if}
+  </div>
 </div>
+
+{#if flashing}
+  <FlashDialog node={flashing} {flash} {authed} on:close={() => (flashing = null)} />
+{/if}
 
 {#if forgetting}
   <div class="overlay">
@@ -203,7 +224,8 @@
 {/if}
 
 <style>
-  .bench { display: grid; grid-template-rows: auto 1fr; gap: 10px; height: 100%; min-height: 0; }
+  .bench { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
+  .view { flex: 1; min-height: 0; }
   .top { display: flex; align-items: center; gap: 14px; padding: 10px 14px; flex-wrap: wrap; }
   .count { display: flex; align-items: baseline; gap: 8px; }
   .big { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -212,10 +234,14 @@
   .actions, .views { display: flex; gap: 8px; }
   .views button { min-height: 48px; padding: 0 16px; font-size: 16px; }
   .got { font-size: 13px; color: var(--ok); }
+  .flash-btn { margin-left: auto; padding: 2px 10px; font-size: 12px; min-height: 30px; }
+  .tile-progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .tile-progress div { height: 100%; background: var(--accent); transition: width 0.3s; }
+  .banner { text-align: left; border-left: 5px solid var(--accent); padding: 8px 14px; font-weight: 600; cursor: pointer; }
   .actions button { min-height: 48px; padding: 0 18px; font-size: 16px; }
   .actions .estop { min-width: 120px; }
 
-  .body { display: grid; grid-template-columns: 1fr 270px; gap: 10px; min-height: 0; }
+  .body { display: grid; grid-template-columns: 1fr 270px; gap: 10px; height: 100%; min-height: 0; }
   .tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(225px, 1fr)); align-content: start; overflow-y: auto; min-height: 0; }
   .tile { border-left: 5px solid var(--ok); display: grid; gap: 8px; user-select: none; touch-action: manipulation; }
   .tile.yellow { border-left-color: var(--warn); }

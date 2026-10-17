@@ -27,10 +27,10 @@ jobs:
           git diff --exit-code -- firmware/generated defs/generated
 
       - name: Lint Python sources
-        run: ruff check defs/codegen host/sim
+        run: ruff check defs/codegen host/sim host/tools
 
       - name: Run simulator tests
-        run: pytest host/sim -v
+        run: pytest host/sim host/tools -v
 
   firmware:
     name: Firmware (core library, host-side unit tests)

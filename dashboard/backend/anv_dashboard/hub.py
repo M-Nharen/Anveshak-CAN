@@ -22,6 +22,7 @@ from . import views
 from .auth import Sessions
 from .bridge import Bridge, BridgeError
 from .control import ControlManager
+from .flash import FlashJobs
 from .settings import Settings
 
 log = logging.getLogger("anv_dashboard")
@@ -54,6 +55,7 @@ class Hub:
             settings.password, settings.session_ttl_s, clock
         )
         self.control = ControlManager(settings, clock)
+        self.flash = FlashJobs(settings)
         self.rates = views.RateTracker()
         self.state: dict[str, Any] | None = None
         self.clients: dict[str, Client] = {}
@@ -84,6 +86,7 @@ class Hub:
             with contextlib.suppress(asyncio.CancelledError):
                 await t
         self._tasks = []
+        await self.flash.stop()
         await self.bridge.close()
 
     @staticmethod
@@ -157,6 +160,7 @@ class Hub:
                 msg["nodes"] = views.nodes_view(self.state)
             elif client.page == "bench":
                 msg["bench"] = views.bench_view(self.state)
+                msg["bench"]["flash"] = self.flash.snapshot()
             elif client.page == "drive":
                 lim = self.control.limits
                 msg["drive"] = {
@@ -263,6 +267,9 @@ class Hub:
                 if not isinstance(node_id, int) or not isinstance(text, str):
                     return self._ack(msg, False, "send_text needs node_id and text")
                 return self._bridge_ack(msg, await self.bridge.send_text(node_id, text))
+            if kind == "flash_cancel":
+                ok = self.flash.cancel()
+                return self._ack(msg, ok, "cancelling; the node keeps its current image" if ok else "nothing is being flashed")
             if kind == "forget_node":
                 node_id = msg.get("node_id")
                 if not isinstance(node_id, int) or not 1 <= node_id <= 31:

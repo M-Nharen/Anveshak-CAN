@@ -86,6 +86,21 @@ Run it again after a `git pull` to rebuild and restart.
 | Short CANH to CANL for a second | ESP LEDs go solid (red on the S3), then recover; the RPi's `restart-ms 100` brings `can1` back |
 | Press E-STOP on the screen | `000` frame with payload `E5`; every tile shows ESTOP until released |
 
+## 5. Flash a node over CAN
+
+1. Export the image in the Arduino IDE (**Sketch → Export Compiled Binary**, use the `.ino.bin`).
+2. On the screen, or at `http://<rpi>:8080/#bench` from a laptop, tap **Flash…** on the node's tile,
+   pick the file and tap **Flash**. A banner and the tile show the progress, and the dialog says when
+   the node is running the new build.
+3. From a terminal on the Pi:
+   ```sh
+   anv-flash info  --node 16
+   anv-flash flash --node 16 ~/bench_esp32_arduino.ino.bin
+   ```
+
+The RPi flashes when it leads, or when no host leads. The node must be disarmed. One node at a
+time. Details and safety rules: `firmware/nodes/bench_esp32_arduino/README.md`.
+
 ## Where to look when something is wrong
 
 | Symptom | Likely cause |
@@ -94,6 +109,8 @@ Run it again after a `git pull` to rebuild and restart.
 | `candump` shows nothing from a board | TX/RX swapped, STB not low, transceiver not powered, or wrong pins in `board_pins.h` |
 | Board LED goes solid, or `ip -s link show can1` counts errors | Missing or extra termination (measure the 60 Ω), no common ground, or wrong `oscillator=` |
 | `can1` missing after reboot | Overlay lines not in `config.txt`, or the HAT isn't seated |
+| Flash says "doesn't answer update requests" | The board runs an older sketch without CAN updates: flash it once over USB |
+| Flash says "another host leads the bus" | Make the RPi lead, or flash from the host that leads |
 | Screen stays white / "backend offline" | `systemctl status anv-dashboard`; the kiosk waits for `http://localhost:8080/api/health` |
 
 **To give a board a new ID:** type `forget` in its serial console, then long-press its old tile and

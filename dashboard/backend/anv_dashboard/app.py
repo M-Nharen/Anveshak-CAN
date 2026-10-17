@@ -60,6 +60,26 @@ def create_app(
             )
         return JSONResponse({"ok": True, "token": token})
 
+    @app.post("/api/flash/{node_id}")
+    async def flash(node_id: int, request: Request) -> JSONResponse:
+        """Body = the app image (.ino.bin), header X-Filename = its name. Needs the login token, or
+        a request from this machine when ANV_DASH_TRUST_LOCALHOST is on (the RPi's own screen)."""
+        token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        local = request.client is not None and request.client.host in ("127.0.0.1", "::1")
+        if not (hub.sessions.valid(token) or (settings.trust_localhost and local)):
+            return JSONResponse({"ok": False, "error": "login required"}, status_code=401)
+        if not 4 <= node_id <= 30:
+            return JSONResponse({"ok": False, "error": "node must be 4-30"}, status_code=400)
+        data = await request.body()
+        if not data:
+            return JSONResponse({"ok": False, "error": "no file"}, status_code=400)
+        if len(data) > settings.max_firmware_bytes:
+            return JSONResponse({"ok": False, "error": "file too large for a firmware image"}, status_code=413)
+        error = await hub.flash.start(node_id, data, request.headers.get("x-filename", "firmware.bin"))
+        if error:
+            return JSONResponse({"ok": False, "error": error}, status_code=409)
+        return JSONResponse({"ok": True})
+
     @app.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:
         await hub.serve(websocket)

@@ -13,7 +13,7 @@ let nextReq = 1;
 let nextToast = 1;
 let retry = 500;
 
-function readToken() {
+export function readToken() {
   try {
     return sessionStorage.getItem(TOKEN_KEY);
   } catch {

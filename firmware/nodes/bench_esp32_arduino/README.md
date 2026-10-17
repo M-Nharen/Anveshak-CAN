@@ -78,6 +78,29 @@ The Arduino IDE only compiles files inside the sketch folder, so `src/anv/` hold
 `firmware/core` and the generated CAN code. Don't edit it. After changing `firmware/core` or
 regenerating `defs/`, run `./sync_core.sh`. CI fails if the copy is stale.
 
+## Flashing over CAN
+
+Once a board runs this sketch (the first time, flash it over USB), you can update it over CAN, one
+board at a time, each with its own image:
+
+1. **Arduino IDE:** pick the board type, then **Sketch → Export Compiled Binary**. In the sketch
+   folder that creates `build/esp32.esp32.esp32/bench_esp32_arduino.ino.bin` (WROOM) or
+   `build/esp32.esp32.esp32s3/...` (S3). Use the **`.ino.bin`**, not the `.ino.merged.bin`.
+2. **Touch screen or browser:** tap **Flash…** on the node's tile, pick the file, and tap **Flash**.
+   Or, on the Pi: `anv-flash flash --node 16 bench_esp32_arduino.ino.bin`.
+3. It takes about 30–60 s. The node restarts into the new image, and the tool checks that its
+   heartbeat shows the new build ID (the `build` printed at boot and by `id`).
+
+Safety rules:
+
+- **Wrong chip:** a WROOM image is refused on an S3 and the other way round.
+- **Armed nodes:** a node that is armed is never flashed.
+- **Interrupted transfer:** the board keeps its old image.
+- **New image proves itself:** it must run for 5 s and hear the RPi. If it crashes or hangs before
+  that, the ESP32 boots the old image again by itself, and the node sends "rollbck" to the screen.
+
+The serial console prints each step (`Update: receiving ...`, `Update: now running the new image ...`).
+
 ## Not done yet
 
 - No hardware acceptance filters; software filtering is enough at bench traffic levels. See the

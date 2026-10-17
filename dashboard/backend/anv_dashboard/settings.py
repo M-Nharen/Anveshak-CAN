@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -38,6 +39,13 @@ class Settings:
     left_drives: tuple[int, ...] = (1, 2, 3)
     right_drives: tuple[int, ...] = (4, 5, 6)
 
+    # Firmware updates (anv-flash): the CAN interface the bus is on, where host/tools lives, and
+    # where uploaded images wait while they are flashed.
+    can_interface: str = "can1"
+    tools_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parents[3] / "host" / "tools")
+    firmware_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "anv-firmware")
+    max_firmware_bytes: int = 2 * 1024 * 1024
+
     can_bitrate: int = 500_000
     avg_frame_bits: float = (
         111.0  # standard 8-byte frame incl. stuffing, for the bus-load estimate
@@ -53,6 +61,7 @@ class Settings:
             s.static_dir = Path(e["ANV_DASH_STATIC"])
         s.trust_localhost = e.get("ANV_DASH_TRUST_LOCALHOST", "").lower() in ("1", "true", "yes", "on")
         s.host = e.get("ANV_DASH_HOST", s.host)
+        s.can_interface = e.get("ANV_DASH_CAN_INTERFACE", s.can_interface)
         s.port = int(e.get("ANV_DASH_PORT", s.port))
         s.max_wheel_speed = float(e.get("ANV_DASH_MAX_WHEEL_SPEED", s.max_wheel_speed))
         s.default_cap = min(

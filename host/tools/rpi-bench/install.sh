@@ -88,7 +88,15 @@ step "Dashboard"
 if [[ ! -x $prefix/dashboard-venv/bin/python ]]; then
   python3 -m venv "$prefix/dashboard-venv"
 fi
-"$prefix/dashboard-venv/bin/pip" install --progress-bar on -r "$repo/dashboard/backend/requirements.txt"
+"$prefix/dashboard-venv/bin/pip" install --progress-bar on -r "$repo/dashboard/backend/requirements.txt" \
+  -r "$repo/host/tools/anv_flash/requirements.txt"
+# anv-flash on the command line, using the same venv the dashboard runs it from.
+cat >"$prefix/bin/anv-flash" <<EOF
+#!/bin/sh
+PYTHONPATH="$repo/host/tools" exec "$prefix/dashboard-venv/bin/python" -m anv_flash --channel "$iface" "\$@"
+EOF
+chmod 0755 "$prefix/bin/anv-flash"
+ln -sf "$prefix/bin/anv-flash" /usr/local/bin/anv-flash
 (cd "$repo/dashboard/frontend" && sudo -u "$user" npm install --no-audit --no-fund && sudo -u "$user" npm run build)
 if [[ ! -f /etc/anveshak/dashboard.env ]]; then
   password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(8))')"
