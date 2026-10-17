@@ -5,6 +5,31 @@ on:
   pull_request:
 
 jobs:
+  schema:
+    name: Schema (anv_schema: validate, generated code current, C matches Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install anv_schema
+        run: pip install -e "host/python/anv_schema[test]" ruff==0.16.8
+
+      - name: Validate schema/
+        run: anv-schema check
+
+      - name: Generated code is committed and current
+        run: anv-schema gen --check
+
+      - name: Lint
+        run: ruff check host/python/anv_schema
+
+      - name: Tests (includes compiling the generated C and comparing it byte for byte)
+        run: pytest host/python/anv_schema -v
+
   defs-and-sim:
     name: Definitions, codegen and simulator
     runs-on: ubuntu-latest

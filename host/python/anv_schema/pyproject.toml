@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anv-schema"
+version = "0.1.0"
+description = "Anveshak CAN schema: load, validate, encode/decode and generate code for node types"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6"]
+
+[project.optional-dependencies]
+dbc = ["cantools>=39"]
+test = ["pytest>=7", "cantools>=39"]
+
+[project.scripts]
+anv-schema = "anv_schema.cli:main"
+
+[tool.setuptools]
+packages = ["anv_schema"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# These build C source text; long lines mirror the C they produce.
+"anv_schema/gen_c.py" = ["E501"]
+"tests/test_gen_c.py" = ["E501"]

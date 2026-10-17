@@ -34,7 +34,7 @@ FIRMWARE (ESP32, C)                       HOST (C++ and Python)
 
 | Branch | Library |
 |---|---|
-| `lib/schema` | The YAML schema for node types, and the generator |
+| `lib/schema` | The YAML schema for node types, and the generator. **Done:** `schema/README.md` |
 | `lib/link-proto` | `anv_link` + `anv_proto` (firmware and host) |
 | `lib/node` | `anv_node`: node runtime and object dictionary |
 | `lib/host` | `anv_host`: discovery, registry, leadership, clients |

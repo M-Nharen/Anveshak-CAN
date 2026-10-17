@@ -3,6 +3,12 @@
 **Every node is an ESP32 (WROOM or S3).** STM32 support was removed on 2026-10-18; the STM32
 sections of `docs/architecture.md` are historical. Don't add STM32 code back.
 
+**New code is built on the libraries (branch `next`, see README.md).** Everything on the bus is
+described in `schema/` (format: `schema/README.md`) and code is generated from it with
+`anv-schema gen`. Never write message layouts, ports, parameter indices or event codes by hand,
+and never hardcode how many nodes there are or what IDs they have: types are data, IDs are
+assigned at run time. `defs/` is the old (11-bit) system and goes away once the apps move over.
+
 The full design is in `docs/architecture.md`. It is the spec. Read only the sections your
 prompt names; don't read the whole file unless the prompt says so.
 
@@ -40,7 +46,8 @@ prompt names; don't read the whole file unless the prompt says so.
 ## Repository layout
 
 ```
-defs/                      shared definitions (owned by P0; changes need a note in the PR)
+schema/                    THE definitions: protocol.yaml, types/, fragments/, generated/
+defs/                      old 11-bit definitions, still used by the current apps
   rover.dbc                all CAN messages
   errors.yaml              error-code registry
   params/<node_type>.yaml  parameter tables
@@ -52,6 +59,7 @@ firmware/                  person A
   nodes/bench_esp32_arduino/  ESP32 (WROOM / S3) node sketch, Arduino
   tests/                   host-side unit tests (run on Linux with the loopback driver)
 host/                      person B
+  python/anv_schema/       schema loader, codec, generators, `anv-schema` CLI
   gateway/                 C++17 core library, no ROS dependency
   ros2/anveshak_can_ros/   ROS 2 node wrapping the gateway (Humble + Jazzy)
   ros2/anveshak_can_msgs/  ROS 2 messages and services
@@ -62,6 +70,14 @@ dashboard/                 person B
   frontend/                Svelte + uPlot
 .github/workflows/         CI
 ```
+
+## Schema rules
+
+- 29-bit IDs: priority(3) | dst(8) | port(10) | src(8), from `schema/protocol.yaml`.
+- Ports 0-63 are the protocol's; node types use 64-1023. Parameter indices 0xF000+ are the
+  protocol's common parameters. Event codes 0x4000-0x7FFF are per node type.
+- After changing anything in `schema/`: `anv-schema check && anv-schema gen`, commit
+  `schema/generated/`. CI fails if it's stale.
 
 ## Testing
 
