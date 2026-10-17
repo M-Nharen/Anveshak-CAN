@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Run anv-flash from a checkout: host/tools/anv-flash flash --node 16 firmware.bin"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from anv_flash.cli import main  # noqa: E402
+
+sys.exit(main())
