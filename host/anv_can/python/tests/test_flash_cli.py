@@ -252,9 +252,9 @@ def _vcan_up() -> bool:
 @pytest.mark.skipif(not _vcan_up() or shutil.which("anv-flash") is None, reason="needs vcan0")
 def test_vcan_flash(schema):
     """The installed anv-flash on a real SocketCAN interface, against a fake node on vcan0."""
-    link = anv_can.open_socketcan("vcan0")
-    n = FakeNode(link, schema, "esp32_bench", 20)
-    o = FakeOtaNode(link, schema, 20, schema.type("esp32_bench").type_id)
+    # One socket per fake half: two threads reading one socket would steal each other's frames.
+    n = FakeNode(anv_can.open_socketcan("vcan0"), schema, "esp32_bench", 20)
+    o = FakeOtaNode(anv_can.open_socketcan("vcan0"), schema, 20, schema.type("esp32_bench").type_id)
     tmp = _write_tmp(bytes(range(256)) * 10)
     try:
         def cli(*args: str) -> str:
