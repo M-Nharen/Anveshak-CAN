@@ -15,6 +15,7 @@
 #include "led.h"
 #include "ota_can.h"
 #include "twai_arduino_driver.h"
+#include "user_app.h"
 
 #include "src/anv/anv_node.h"
 #include "src/anv/ids.h"
@@ -358,6 +359,7 @@ void setup() {
     s_next_request_ms = millis() + kRequestFirstMinMs + random(kRequestFirstSpanMs);
     Serial.println("No node ID saved: asking the hosts for one");
   }
+  user_setup();
 }
 
 void loop() {
@@ -395,8 +397,11 @@ void loop() {
   }
 
   const bool off = bus_off();
-  led_update(now, off ? LedMode::BusOff : (s_mode == Mode::Running ? LedMode::Running : LedMode::WaitingForId),
-             s_can_ctx.tx_ok_count);
+  if (!user_owns_led()) {
+    led_update(now, off ? LedMode::BusOff : (s_mode == Mode::Running ? LedMode::Running : LedMode::WaitingForId),
+               s_can_ctx.tx_ok_count);
+  }
+  user_loop(now);
 
   static uint32_t last_diag = 0;
   if (s_diag && now - last_diag >= 1000) {

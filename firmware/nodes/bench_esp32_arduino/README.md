@@ -78,6 +78,16 @@ The Arduino IDE only compiles files inside the sketch folder, so `src/anv/` hold
 `firmware/core` and the generated CAN code. Don't edit it. After changing `firmware/core` or
 regenerating `defs/`, run `./sync_core.sh`. CI fails if the copy is stale.
 
+## Your own code: `user_app.cpp`
+
+Put experiments in `user_app.cpp` (`user_setup()` once, `user_loop(now_ms)` every loop). They run
+alongside the CAN node, so the board stays on the screen and can still be flashed over CAN. Don't
+flash a separate plain sketch over CAN: it has no CAN code, so the board would drop off the bus and
+need USB again.
+
+The file ships with a 5 s on / 5 s off LED blink: set `USER_BLINK_DEMO` to 1, export, and flash. Never
+use `delay()` there; use `now_ms`, because a blocked loop stops the board's CAN traffic.
+
 ## Flashing over CAN
 
 Once a board runs this sketch (the first time, flash it over USB), you can update it over CAN, one
