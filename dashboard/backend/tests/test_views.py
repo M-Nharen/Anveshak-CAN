@@ -120,3 +120,22 @@ def test_bench_view_lists_heard_nodes_and_recent_events():
 def test_bench_view_copes_with_an_older_gateway():
     b = views.bench_view(make_state())  # no events / id_allocator / sensors keys
     assert b["events"] == [] and not b["allocator"] and b["known"] == 6
+
+
+def test_messages_fold_echoes_into_what_was_sent():
+    def t(time_ns, direction, node_id, name, seq, text):
+        return {"time_ns": time_ns, "age_ms": 1000.0, "dir": direction, "node_id": node_id, "name": name,
+                "seq": seq, "text": text}  # fmt: skip
+    texts = [
+        t(1, "tx", 0, "ALL", 1, "hello"),
+        t(2, "rx", 16, "NODE16", 1, "hello"),
+        t(3, "rx", 18, "NODE18", 1, "hello"),
+        t(4, "tx", 18, "NODE18", 2, "ping"),
+        t(5, "rx", 16, "NODE16", 0, "hi pi"),
+    ]
+    m = views.messages_view(make_state(texts=texts))
+    assert [x["text"] for x in m] == ["hi pi", "ping", "hello"]  # newest first, echoes folded in
+    assert m[0]["dir"] == "rx" and m[0]["name"] == "NODE16"
+    assert m[1]["received_by"] == []  # not echoed (yet)
+    assert m[2]["received_by"] == ["NODE16", "NODE18"]
+    assert views.messages_view(make_state()) == []

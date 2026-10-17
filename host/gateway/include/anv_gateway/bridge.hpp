@@ -7,6 +7,7 @@
 //   {"id":4,"cmd":"request_lead","host":1}
 //   {"id":5,"cmd":"ping"}
 //   {"id":6,"cmd":"forget_node","node_id":17}          (free an auto-assigned ID in the table)
+//   {"id":7,"cmd":"send_text","node_id":16,"text":"hello"}  (node 0 = every node; reply carries "seq")
 //
 // Command replies are {"id":N,"ok":true|false,"code":<CmdResult>,"result":"<text>"}. It only wraps the
 // public Gateway API, so every rule (master-only commands, E-stop latch, 100 ms target hold)

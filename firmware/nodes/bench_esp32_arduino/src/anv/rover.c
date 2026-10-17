@@ -14359,3 +14359,599 @@ bool rover_node_id_assign_tool_flags_is_in_phys_range(double value)
 {
     return ((value >= 0.0) && (value <= 255.0));
 }
+
+int rover_text_to_node_orin_pack(
+    uint8_t *dst_p,
+    const struct rover_text_to_node_orin_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u8(src_p->seq, 0u, 0xffu);
+    dst_p[1] |= pack_left_shift_u8(src_p->c0, 0u, 0xffu);
+    dst_p[2] |= pack_left_shift_u8(src_p->c1, 0u, 0xffu);
+    dst_p[3] |= pack_left_shift_u8(src_p->c2, 0u, 0xffu);
+    dst_p[4] |= pack_left_shift_u8(src_p->c3, 0u, 0xffu);
+    dst_p[5] |= pack_left_shift_u8(src_p->c4, 0u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->c5, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->c6, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_text_to_node_orin_unpack(
+    struct rover_text_to_node_orin_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->seq = unpack_right_shift_u8(src_p[0], 0u, 0xffu);
+    dst_p->c0 = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+    dst_p->c1 = unpack_right_shift_u8(src_p[2], 0u, 0xffu);
+    dst_p->c2 = unpack_right_shift_u8(src_p[3], 0u, 0xffu);
+    dst_p->c3 = unpack_right_shift_u8(src_p[4], 0u, 0xffu);
+    dst_p->c4 = unpack_right_shift_u8(src_p[5], 0u, 0xffu);
+    dst_p->c5 = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->c6 = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_text_to_node_orin_init(struct rover_text_to_node_orin_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_text_to_node_orin_t));
+
+    return 0;
+}
+
+bool rover_text_to_node_orin_seq_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_seq_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c0_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c0_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c1_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c1_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c2_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c2_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c3_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c3_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c4_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c4_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c5_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c5_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_orin_c6_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_orin_c6_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+int rover_text_to_node_rpi_pack(
+    uint8_t *dst_p,
+    const struct rover_text_to_node_rpi_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u8(src_p->seq, 0u, 0xffu);
+    dst_p[1] |= pack_left_shift_u8(src_p->c0, 0u, 0xffu);
+    dst_p[2] |= pack_left_shift_u8(src_p->c1, 0u, 0xffu);
+    dst_p[3] |= pack_left_shift_u8(src_p->c2, 0u, 0xffu);
+    dst_p[4] |= pack_left_shift_u8(src_p->c3, 0u, 0xffu);
+    dst_p[5] |= pack_left_shift_u8(src_p->c4, 0u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->c5, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->c6, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_text_to_node_rpi_unpack(
+    struct rover_text_to_node_rpi_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->seq = unpack_right_shift_u8(src_p[0], 0u, 0xffu);
+    dst_p->c0 = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+    dst_p->c1 = unpack_right_shift_u8(src_p[2], 0u, 0xffu);
+    dst_p->c2 = unpack_right_shift_u8(src_p[3], 0u, 0xffu);
+    dst_p->c3 = unpack_right_shift_u8(src_p[4], 0u, 0xffu);
+    dst_p->c4 = unpack_right_shift_u8(src_p[5], 0u, 0xffu);
+    dst_p->c5 = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->c6 = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_text_to_node_rpi_init(struct rover_text_to_node_rpi_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_text_to_node_rpi_t));
+
+    return 0;
+}
+
+bool rover_text_to_node_rpi_seq_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_seq_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c0_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c0_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c1_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c1_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c2_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c2_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c3_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c3_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c4_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c4_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c5_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c5_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_rpi_c6_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_rpi_c6_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+int rover_text_to_node_tool_pack(
+    uint8_t *dst_p,
+    const struct rover_text_to_node_tool_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u8(src_p->seq, 0u, 0xffu);
+    dst_p[1] |= pack_left_shift_u8(src_p->c0, 0u, 0xffu);
+    dst_p[2] |= pack_left_shift_u8(src_p->c1, 0u, 0xffu);
+    dst_p[3] |= pack_left_shift_u8(src_p->c2, 0u, 0xffu);
+    dst_p[4] |= pack_left_shift_u8(src_p->c3, 0u, 0xffu);
+    dst_p[5] |= pack_left_shift_u8(src_p->c4, 0u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->c5, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->c6, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_text_to_node_tool_unpack(
+    struct rover_text_to_node_tool_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->seq = unpack_right_shift_u8(src_p[0], 0u, 0xffu);
+    dst_p->c0 = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+    dst_p->c1 = unpack_right_shift_u8(src_p[2], 0u, 0xffu);
+    dst_p->c2 = unpack_right_shift_u8(src_p[3], 0u, 0xffu);
+    dst_p->c3 = unpack_right_shift_u8(src_p[4], 0u, 0xffu);
+    dst_p->c4 = unpack_right_shift_u8(src_p[5], 0u, 0xffu);
+    dst_p->c5 = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->c6 = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_text_to_node_tool_init(struct rover_text_to_node_tool_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_text_to_node_tool_t));
+
+    return 0;
+}
+
+bool rover_text_to_node_tool_seq_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_seq_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c0_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c0_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c1_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c1_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c2_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c2_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c3_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c3_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c4_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c4_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c5_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c5_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_to_node_tool_c6_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_to_node_tool_c6_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+int rover_text_from_node_pack(
+    uint8_t *dst_p,
+    const struct rover_text_from_node_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    memset(&dst_p[0], 0, 8);
+
+    dst_p[0] |= pack_left_shift_u8(src_p->seq, 0u, 0xffu);
+    dst_p[1] |= pack_left_shift_u8(src_p->c0, 0u, 0xffu);
+    dst_p[2] |= pack_left_shift_u8(src_p->c1, 0u, 0xffu);
+    dst_p[3] |= pack_left_shift_u8(src_p->c2, 0u, 0xffu);
+    dst_p[4] |= pack_left_shift_u8(src_p->c3, 0u, 0xffu);
+    dst_p[5] |= pack_left_shift_u8(src_p->c4, 0u, 0xffu);
+    dst_p[6] |= pack_left_shift_u8(src_p->c5, 0u, 0xffu);
+    dst_p[7] |= pack_left_shift_u8(src_p->c6, 0u, 0xffu);
+
+    return (8);
+}
+
+int rover_text_from_node_unpack(
+    struct rover_text_from_node_t *dst_p,
+    const uint8_t *src_p,
+    size_t size)
+{
+    if (size < 8u) {
+        return (-EINVAL);
+    }
+
+    dst_p->seq = unpack_right_shift_u8(src_p[0], 0u, 0xffu);
+    dst_p->c0 = unpack_right_shift_u8(src_p[1], 0u, 0xffu);
+    dst_p->c1 = unpack_right_shift_u8(src_p[2], 0u, 0xffu);
+    dst_p->c2 = unpack_right_shift_u8(src_p[3], 0u, 0xffu);
+    dst_p->c3 = unpack_right_shift_u8(src_p[4], 0u, 0xffu);
+    dst_p->c4 = unpack_right_shift_u8(src_p[5], 0u, 0xffu);
+    dst_p->c5 = unpack_right_shift_u8(src_p[6], 0u, 0xffu);
+    dst_p->c6 = unpack_right_shift_u8(src_p[7], 0u, 0xffu);
+
+    return (0);
+}
+
+int rover_text_from_node_init(struct rover_text_from_node_t *msg_p)
+{
+    if (msg_p == NULL) return -1;
+
+    memset(msg_p, 0, sizeof(struct rover_text_from_node_t));
+
+    return 0;
+}
+
+bool rover_text_from_node_seq_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_seq_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c0_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c0_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c1_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c1_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c2_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c2_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c3_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c3_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c4_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c4_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c5_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c5_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}
+
+bool rover_text_from_node_c6_is_in_range(uint8_t value)
+{
+    (void)value;
+
+    return (true);
+}
+
+bool rover_text_from_node_c6_is_in_phys_range(double value)
+{
+    return ((value >= 0.0) && (value <= 255.0));
+}

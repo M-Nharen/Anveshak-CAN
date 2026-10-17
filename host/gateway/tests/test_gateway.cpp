@@ -497,4 +497,32 @@ TEST(only_one_host_answers_id_requests_the_master_or_else_the_lowest_tie_break) 
   CHECK_EQ(rec.count_id(0x5F8), 1u);
 }
 
+TEST(send_text_goes_out_and_the_nodes_echo_lands_in_the_log) {
+  FakeBusHub hub;
+  Recorder rec(hub);
+  Host rpi(hub, 2);
+  Tool node16(hub);  // stands in for an ESP running the bench sketch
+  sleep_ms(20);
+
+  uint8_t seq = 0;
+  CHECK(rpi.gw->send_text(16, "hello", &seq) == CmdResult::Ok);
+  CHECK(seq >= 1);
+  CHECK(wait_until([&] { return rec.count_id(0x783) == 1; }, 500));
+  node16.send(make_text_from_node(16, seq, "hello"));  // the echo
+  node16.send(make_text_from_node(16, 0, "hi pi"));    // text the node sends on its own
+  CHECK(wait_until([&] { return rpi.gw->state().texts.size() == 3; }, 500));
+  const auto texts = rpi.gw->state().texts;
+  if (texts.size() == 3) {
+    CHECK(texts[0].outgoing && texts[0].node == 16 && texts[0].text == "hello");
+    CHECK(!texts[1].outgoing && texts[1].node == 16 && texts[1].seq == seq && texts[1].text == "hello");
+    CHECK(!texts[2].outgoing && texts[2].seq == 0 && texts[2].text == "hi pi");
+  }
+
+  uint8_t next = 0;
+  CHECK(rpi.gw->send_text(0, "all", &next) == CmdResult::Ok);
+  CHECK_EQ(next, static_cast<uint8_t>(seq + 1));
+  CHECK(rpi.gw->send_text(16, "far too long") == CmdResult::BadArgument);
+  CHECK(rpi.gw->send_text(1, "hi") == CmdResult::BadArgument);
+}
+
 int main() { return t::run_all(); }

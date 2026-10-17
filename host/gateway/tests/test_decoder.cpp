@@ -265,7 +265,9 @@ TEST(every_dbc_message_decodes_to_a_named_type) {
       CHECK(message_name(d.msg) != "UNKNOWN");
     }
   }
-  CHECK_EQ(decoded, 5u + 3u + 3u + 6u * 17u + 4u + 4u + 14u * 3u);
+  // Text frames: the DBC's 3 broadcast host texts and the node-text template, plus the shared
+  // layout addressed to each of nodes 4-30 (27 nodes x 3 host senders + 1 node-to-host).
+  CHECK_EQ(decoded, 5u + 3u + 3u + 6u * 17u + 4u + 4u + 14u * 3u + 4u + 27u * 4u);
 }
 
 TEST(auxiliary_nodes_decode_with_the_shared_heartbeat_and_sensor_layouts) {
@@ -361,6 +363,33 @@ TEST(fake_bus_delivers_to_other_ports_only) {
   CHECK_EQ(hub.frames_sent(), 1u);
 }
 
+TEST(text_frames_round_trip_for_one_node_and_for_every_node) {
+  const CanFrame to16 = make_text_to_node(2, 16, 7, "hello");
+  CHECK_EQ(to16.id, 0x783);  // 0x700 + 8 * 16 + 3 (from the RPi)
+  const TextToNodeMsg t = as<TextToNodeMsg>(must_decode(to16));
+  CHECK_EQ(t.host, 2);
+  CHECK_EQ(t.node, 16);
+  CHECK_EQ(t.seq, 7);
+  CHECK(t.text == "hello");
+
+  const TextToNodeMsg all = as<TextToNodeMsg>(must_decode(make_text_to_node(1, 0, 1, "abcdefg")));
+  CHECK_EQ(all.node, 0);
+  CHECK(all.text == "abcdefg");
+
+  const CanFrame back = make_text_from_node(18, 7, "hello");
+  CHECK_EQ(back.id, 0x795);  // 0x700 + 8 * 18 + 5
+  const TextFromNodeMsg b = as<TextFromNodeMsg>(must_decode(back));
+  CHECK_EQ(b.node, 18);
+  CHECK_EQ(b.seq, 7);
+  CHECK(b.text == "hello");
+
+  CHECK_EQ(make_text_to_node(2, 16, 1, "").id, kInvalidFrameId);
+  CHECK_EQ(make_text_to_node(2, 16, 1, "eightchr").id, kInvalidFrameId);  // 8 > 7 characters
+  CHECK_EQ(make_text_to_node(2, 2, 1, "hi").id, kInvalidFrameId);        // a host is not a node
+  CHECK_EQ(make_text_to_node(2, 16, 1, "tab\there").id, kInvalidFrameId);
+  CHECK_EQ(make_text_from_node(31, 0, "hi").id, kInvalidFrameId);
+}
+
 #ifdef __linux__
 #include "anv_gateway/socketcan_bus.hpp"
 
@@ -377,7 +406,9 @@ TEST(the_kernel_filters_let_through_every_frame_the_gateway_acts_on) {
   CHECK(passes(0x680) && passes(0x480) && passes(0x220) && passes(0x320));
   CHECK(!passes(0x120));  // commands
   CHECK(!passes(0x524));  // ordinary service traffic
+  CHECK(passes(0x785) && passes(0x795));  // text from nodes 16 and 18
   CHECK(!passes(0x721));  // bootloader
+  CHECK(!passes(0x783));  // text to a node: only the node needs it
 }
 #endif
 

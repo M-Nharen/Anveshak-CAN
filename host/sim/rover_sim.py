@@ -299,6 +299,7 @@ class EspBenchNodeSim:
     next_hb_time: float = 0.0
     next_sensor_time: float = 0.0
     requests_sent: int = 0
+    pending_echo: can.Message | None = None
 
     def __post_init__(self) -> None:
         self._rng = random.Random(self.mac)  # same jitter per board, like the MAC-seeded firmware
@@ -335,7 +336,14 @@ class EspBenchNodeSim:
                     self.node_id = d["ASSIGNED_ID"]
                     self.reboot()  # the firmware saves the ID and restarts
             return
-        if fid == 0x000:
+        node, sub = (fid >> 3) & 0x1F, fid & 0x7
+        if fid >> 8 == 7 and 2 <= sub <= 4 and node in (0, self.node_id):
+            # Host text (class 7, sub 2/3/4 from Orin/RPi/tool): echo it back at sub 5, as the sketch does.
+            d = self.db.get_message_by_name("TEXT_TO_NODE_RPI").decode(frame.data, decode_choices=False, scaling=False)
+            echo = self.db.get_message_by_name("TEXT_FROM_NODE")
+            self.pending_echo = can.Message(arbitration_id=0x700 | (self.node_id << 3) | 5, is_extended_id=False,
+                                            data=echo.encode(d, scaling=False))
+        elif fid == 0x000:
             self.state = STATE_ESTOP
         elif fid == 0x001 and self.state == STATE_ESTOP:
             self.state = STATE_DISARMED
@@ -350,6 +358,9 @@ class EspBenchNodeSim:
     def tick(self, now: float, bus: can.BusABC) -> None:
         if self.dropped:
             return
+        if self.pending_echo is not None:
+            bus.send(self.pending_echo)
+            self.pending_echo = None
         if self.node_id is None:
             if now >= self.next_request_time:
                 msg = self.db.get_message_by_name("NODE_ID_REQUEST")

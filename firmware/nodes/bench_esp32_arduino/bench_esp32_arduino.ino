@@ -27,6 +27,10 @@ constexpr uint32_t kHbRateHz = 10;
 constexpr uint32_t kSensorRateHz = 10;
 constexpr size_t kTxqCapPerPrio = 8;
 constexpr uint16_t kRawTextId = 0x7FF;  // serial "raw" text frames: lowest priority, unused by the DBC
+// Bench text (docs/architecture.md, TEXT_TO_NODE / TEXT_FROM_NODE): class 7, sub 2/3/4 = from the
+// Orin / RPi / tool, to this node or to node 0 (everyone); sub 5 = this node's replies.
+constexpr uint8_t kTextSubFromHostFirst = 2, kTextSubFromHostLast = 4, kTextSubFromNode = 5;
+constexpr size_t kTextMaxLen = 7;
 constexpr uint32_t kRequestFirstMinMs = 100, kRequestFirstSpanMs = 500;  // first request jitter
 constexpr uint32_t kRequestEveryMs = 400, kRequestSpanMs = 200;          // then every 400-600 ms
 
@@ -173,6 +177,52 @@ static void send_sensor_frame() {
   (void)anv_node_send(&s_node, ACC_CAN_PRIO_TELEMETRY, &f);
 }
 
+// ---------------- bench text ----------------
+static const char* host_name(uint8_t sub) {
+  switch (sub) {
+    case 2: return "Orin";
+    case 3: return "RPi";
+    default: return "tool";
+  }
+}
+
+// seq = the host text being echoed back, or 0 for text typed on this board's serial console.
+static bool send_text(uint8_t seq, const char* text, size_t len) {
+  rover_text_from_node_t m;
+  rover_text_from_node_init(&m);
+  uint8_t c[kTextMaxLen] = {0};
+  memcpy(c, text, min(len, kTextMaxLen));
+  m.seq = seq;
+  m.c0 = c[0]; m.c1 = c[1]; m.c2 = c[2]; m.c3 = c[3]; m.c4 = c[4]; m.c5 = c[5]; m.c6 = c[6];
+  acc_can_frame_t f;
+  f.id = ROVER_CAN_ID(ROVER_CLASS_BOOTLOADER, s_node_id, kTextSubFromNode);
+  const int n = rover_text_from_node_pack(f.data, &m, sizeof(f.data));
+  if (n < 0) return false;
+  f.dlc = static_cast<uint8_t>(n);
+  return anv_node_send(&s_node, ACC_CAN_PRIO_SERVICE, &f);
+}
+
+// A host's text for this node (or for everyone): print it and echo it back, so the screen shows the
+// node really received it. Returns false for frames that aren't host text to us.
+static bool on_text_frame(const acc_can_frame_t& f) {
+  const uint8_t node = ROVER_ID_NODE(f.id), sub = ROVER_ID_SUB(f.id);
+  if (ROVER_ID_CLASS(f.id) != ROVER_CLASS_BOOTLOADER || sub < kTextSubFromHostFirst || sub > kTextSubFromHostLast ||
+      (node != s_node_id && node != ROVER_NODE_BROADCAST))
+    return false;
+  rover_text_to_node_rpi_t m;  // same layout from every host
+  if (rover_text_to_node_rpi_unpack(&m, f.data, f.dlc) != 0) return true;
+  const uint8_t c[kTextMaxLen] = {m.c0, m.c1, m.c2, m.c3, m.c4, m.c5, m.c6};
+  char text[kTextMaxLen + 1] = {0};
+  size_t len = 0;
+  while (len < kTextMaxLen && c[len] != 0) {
+    text[len] = (c[len] >= 0x20 && c[len] < 0x7F) ? static_cast<char>(c[len]) : '?';
+    ++len;
+  }
+  Serial.printf("Message from %s%s: %s\n", host_name(sub), node == ROVER_NODE_BROADCAST ? " (to everyone)" : "", text);
+  if (len > 0) send_text(m.seq, text, len);
+  return true;
+}
+
 // ---------------- serial console ----------------
 static void print_status() {
   twai_node_status_t st;
@@ -211,7 +261,7 @@ static void send_raw_text(const char* text) {
 
 static void handle_command(char* line) {
   if (strcmp(line, "help") == 0) {
-    Serial.println("commands: diag (toggle the 1 s status line), status, id, forget, raw <text>");
+    Serial.println("commands: diag (toggle the 1 s status line), status, id, forget, msg <text>, raw <text>");
   } else if (strcmp(line, "diag") == 0) {
     s_diag = !s_diag;
     Serial.printf("periodic status %s\n", s_diag ? "on" : "off");
@@ -230,6 +280,14 @@ static void handle_command(char* line) {
     Serial.println("Node ID erased; restarting to ask for a new one");
     Serial.flush();
     ESP.restart();
+  } else if (strncmp(line, "msg ", 4) == 0) {
+    if (s_mode != Mode::Running) {
+      Serial.println("No node ID yet: messages go out once the RPi has given this board an ID");
+    } else {
+      const size_t len = strlen(line + 4);
+      if (len > kTextMaxLen) Serial.printf("Only the first %u characters fit in one frame\n", (unsigned)kTextMaxLen);
+      Serial.println(send_text(0, line + 4, len) ? "Message queued for the screen" : "Send queue full");
+    }
   } else if (strncmp(line, "raw ", 4) == 0) {
     send_raw_text(line + 4);
   } else {
@@ -303,7 +361,7 @@ void loop() {
     if (f.id == kRawTextId) {
       Serial.printf("Received raw text: %.*s\n", f.dlc, reinterpret_cast<const char*>(f.data));
     } else if (s_mode == Mode::Running) {
-      anv_node_on_rx_frame(&s_node, &f, now);
+      if (!on_text_frame(f)) anv_node_on_rx_frame(&s_node, &f, now);
     } else {
       on_frame_while_waiting(f);
     }

@@ -32,6 +32,10 @@ constexpr uint8_t kFirstAuxNode = 16;       // science / auxiliary nodes and spa
 constexpr uint8_t kLastAuxNode = 30;
 constexpr uint8_t kNodeUnconfigured = 31;  // a board with no ID yet
 
+// Class 7 sub-types of the bench text frames (0 and 1 are the bootloader transfer).
+constexpr uint8_t kTextSubFromHostBase = 1;  // + host node: 2 Orin, 3 RPi, 4 tool
+constexpr uint8_t kTextSubFromNode = 5;
+
 // HW_TARGET in NODE_ID_REQUEST
 constexpr uint8_t kHwTargetEsp32 = 0;
 constexpr uint8_t kHwTargetEsp32S3 = 1;

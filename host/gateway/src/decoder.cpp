@@ -15,10 +15,10 @@ namespace anv::gw {
 namespace {
 
 // Order matches the Message variant in messages.hpp.
-constexpr std::array<std::string_view, 21> kMessageNames = {
+constexpr std::array<std::string_view, 23> kMessageNames = {
     "UNKNOWN",     "ESTOP",     "ESTOP_RELEASE", "SYNC",       "NMT",        "DEBUG_LEVEL", "HOST_HB",
     "LEAD_REQUEST", "DRIVE_CMD", "DRIVE_FB_A",    "DRIVE_FB_B", "DRIVE_TELEM_0", "DRIVE_TELEM_1", "DRIVE_DEBUG",
-    "NODE_HB",     "NODE_EVENT", "FPGA_SENSORS", "SERVICE",    "BOOT",       "NODE_ID_REQUEST", "NODE_ID_ASSIGN"};
+    "NODE_HB",     "NODE_EVENT", "FPGA_SENSORS", "SERVICE",    "BOOT",       "NODE_ID_REQUEST", "NODE_ID_ASSIGN", "TEXT_TO_NODE", "TEXT_FROM_NODE"};
 
 // --- struct -> typed message converters; templates so each per-drive struct shares one body ---
 
@@ -166,6 +166,18 @@ NodeIdAssignMsg conv_id_assign(uint8_t host, const S& s) {
   return m;
 }
 
+// Characters C0-C6 up to the first zero; anything unprintable shows as '?'.
+template <class S>
+std::string text_of(const S& s) {
+  const uint8_t c[kTextMaxLen] = {s.c0, s.c1, s.c2, s.c3, s.c4, s.c5, s.c6};
+  std::string out;
+  for (uint8_t ch : c) {
+    if (ch == 0) break;
+    out.push_back(ch >= 0x20 && ch < 0x7F ? static_cast<char>(ch) : '?');
+  }
+  return out;
+}
+
 // Nodes without their own DBC entries (auxiliary nodes 16-30, e.g. auto-addressed ESP32s) send the
 // shared heartbeat and 4x u16 sensor layouts; firmware packs them with the DRIVE1 / FPGA packers
 // (anv_node.c, sensor_esp32s3), so decode them with the same generated unpackers.
@@ -175,6 +187,21 @@ bool decode_generic(const CanFrame& frame, Decoded& out) {
   const uint8_t cls = ROVER_ID_CLASS(frame.id);
   const uint8_t node = ROVER_ID_NODE(frame.id);
   const uint8_t sub = ROVER_ID_SUB(frame.id);
+  // Text frames use one DBC layout for every node (the DBC holds the broadcast / template copies).
+  if (cls == ROVER_CLASS_BOOTLOADER && node >= kNodeFirstDrive && node < kNodeUnconfigured) {
+    if (sub >= kTextSubFromHostBase + kNodeOrin && sub <= kTextSubFromHostBase + kNodeTool) {
+      struct rover_text_to_node_rpi_t s;
+      if (rover_text_to_node_rpi_unpack(&s, d, len) != 0) return false;
+      out.msg = TextToNodeMsg{static_cast<uint8_t>(sub - kTextSubFromHostBase), node, s.seq, text_of(s)};
+      return true;
+    }
+    if (sub == kTextSubFromNode) {
+      struct rover_text_from_node_t s;
+      if (rover_text_from_node_unpack(&s, d, len) != 0) return false;
+      out.msg = TextFromNodeMsg{node, s.seq, text_of(s)};
+      return true;
+    }
+  }
   if (node < kFirstAuxNode || node > kLastAuxNode) return false;
   if (cls == ROVER_CLASS_HEARTBEAT && sub == 0) {
     struct rover_drive1_node_hb_t s;
@@ -244,6 +271,14 @@ bool decode_frame(const CanFrame& frame, Decoded& out) {
              conv_id_assign(2, s))
     ANV_CASE(ROVER_NODE_ID_ASSIGN_TOOL_FRAME_ID, rover_node_id_assign_tool_t, rover_node_id_assign_tool_unpack,
              conv_id_assign(3, s))
+    ANV_CASE(ROVER_TEXT_TO_NODE_ORIN_FRAME_ID, rover_text_to_node_orin_t, rover_text_to_node_orin_unpack,
+             (TextToNodeMsg{1, 0, s.seq, text_of(s)}))
+    ANV_CASE(ROVER_TEXT_TO_NODE_RPI_FRAME_ID, rover_text_to_node_rpi_t, rover_text_to_node_rpi_unpack,
+             (TextToNodeMsg{2, 0, s.seq, text_of(s)}))
+    ANV_CASE(ROVER_TEXT_TO_NODE_TOOL_FRAME_ID, rover_text_to_node_tool_t, rover_text_to_node_tool_unpack,
+             (TextToNodeMsg{3, 0, s.seq, text_of(s)}))
+    ANV_CASE(ROVER_TEXT_FROM_NODE_FRAME_ID, rover_text_from_node_t, rover_text_from_node_unpack,
+             (TextFromNodeMsg{kNodeUnconfigured, s.seq, text_of(s)}))
     default:
       return decode_generic(frame, out);
   }

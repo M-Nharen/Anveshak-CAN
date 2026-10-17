@@ -23,6 +23,7 @@ class Bridge(Protocol):
     async def release_estop(self) -> dict[str, Any]: ...
     async def request_lead(self, host: int) -> dict[str, Any]: ...
     async def forget_node(self, node_id: int) -> dict[str, Any]: ...
+    async def send_text(self, node_id: int, text: str) -> dict[str, Any]: ...
     async def close(self) -> None: ...
 
 
@@ -105,6 +106,9 @@ class GatewayBridge:
 
     async def forget_node(self, node_id: int) -> dict[str, Any]:
         return await self._main.call("forget_node", node_id=node_id)
+
+    async def send_text(self, node_id: int, text: str) -> dict[str, Any]:
+        return await self._main.call("send_text", node_id=node_id, text=text)
 
     async def close(self) -> None:
         await self._main.close()

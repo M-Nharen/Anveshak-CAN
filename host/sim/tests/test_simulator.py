@@ -273,3 +273,16 @@ def test_assigned_esp_node_starts_heartbeats_and_sensors_at_its_id(bench, db):
     sim.esp_nodes[0].forget()
     sim.esp_nodes[0].revive()
     assert [f for f in collect(sim, client, 0.8) if f.arbitration_id == NODE_ID_REQUEST_ID]
+
+
+def test_assigned_esp_node_echoes_host_text(bench, db):
+    sim, client = bench
+    send(client, db, "NODE_ID_ASSIGN_RPI", {"MAC": 0xA4CF12000001, "ASSIGNED_ID": 16, "FLAGS": 0})
+    collect(sim, client, 0.2)
+    text = {"SEQ": 5, **{f"C{i}": b for i, b in enumerate(b"hello\0\0")}}
+    msg = db.get_message_by_name("TEXT_TO_NODE_RPI")
+    client.send(can.Message(arbitration_id=0x783, is_extended_id=False, data=msg.encode(text, scaling=False)))
+    echoes = [f for f in collect(sim, client, 0.3) if f.arbitration_id == 0x785]
+    assert len(echoes) == 1
+    d = db.get_message_by_name("TEXT_FROM_NODE").decode(echoes[0].data, scaling=False, decode_choices=False)
+    assert d["SEQ"] == 5 and bytes(d[f"C{i}"] for i in range(5)) == b"hello"

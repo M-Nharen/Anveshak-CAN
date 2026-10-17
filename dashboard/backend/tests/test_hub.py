@@ -285,3 +285,20 @@ def test_localhost_is_trusted_only_when_configured():
             assert ws.sent[-1]["authed"] is expect
 
     run(main())
+
+
+def test_send_text_reaches_the_gateway_once_logged_in():
+    async def main():
+        hub, bridge, _ = make_hub()
+        anon = await connect(hub, login=False)
+        anon.say(t="send_text", node_id=16, text="hello", req=1)
+        await settle()
+        assert anon.acks()[-1]["msg"] == "login required"
+        ws = await connect(hub)
+        ws.say(t="send_text", node_id=16, text="hello", req=2)
+        ws.say(t="send_text", node_id="16", text="hello", req=3)
+        await settle()
+        assert [a["ok"] for a in ws.acks()[-2:]] == [True, False]
+        assert bridge.calls == [("send_text", (16, "hello"))]
+
+    run(main())

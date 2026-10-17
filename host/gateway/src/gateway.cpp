@@ -187,6 +187,11 @@ bool Gateway::is_id_allocator_locked(int64_t now_ns) const {
   return true;
 }
 
+void Gateway::log_text_locked(TextLogEntry e) {
+  texts_.push_back(std::move(e));
+  if (texts_.size() > kTextLogSize) texts_.erase(texts_.begin(), texts_.end() - kTextLogSize);
+}
+
 void Gateway::on_id_request_locked(const NodeIdRequestMsg& m, int64_t now_ns, std::vector<GatewayEvent>& events,
                                    std::vector<CanFrame>& out) {
   if (!is_id_allocator_locked(now_ns)) return;
@@ -279,6 +284,8 @@ void Gateway::handle_frame(const CanFrame& f) {
             events.push_back(e);
           } else if constexpr (std::is_same_v<T, NodeIdRequestMsg>) {
             on_id_request_locked(m, d.rx_ns, events, out);
+          } else if constexpr (std::is_same_v<T, TextFromNodeMsg>) {
+            log_text_locked({d.rx_ns, false, m.node, m.seq, m.text});
           }
         },
         d.msg);
@@ -491,6 +498,22 @@ CmdResult Gateway::forget_node(uint8_t node_id) {
   return found ? CmdResult::Ok : CmdResult::BadArgument;
 }
 
+CmdResult Gateway::send_text(uint8_t node, const std::string& text, uint8_t* seq_out) {
+  CanFrame f;
+  uint8_t seq;
+  {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!running_.load()) return CmdResult::NotRunning;
+    seq = static_cast<uint8_t>(text_seq_ % 255 + 1);  // 1-255: 0 means "the node's own text"
+    f = make_text_to_node(cfg_.host_id, node, seq, text);
+    if (f.id == kInvalidFrameId) return CmdResult::BadArgument;
+    text_seq_ = seq;
+    log_text_locked({mono_ns(), true, node, seq, text});
+  }
+  if (seq_out) *seq_out = seq;
+  return send(f) ? CmdResult::Ok : CmdResult::SendFailed;
+}
+
 GatewayState Gateway::state() const {
   GatewayState s;
   const int64_t now = mono_ns();
@@ -520,6 +543,7 @@ GatewayState Gateway::state() const {
     s.id_allocator = is_id_allocator_locked(now);
     s.id_table = allocator_.table();
     s.recent_events = recent_events_;
+    s.texts = texts_;
   }
   s.bus.rx_frames = rx_frames_.load();
   s.bus.tx_frames = tx_frames_.load();

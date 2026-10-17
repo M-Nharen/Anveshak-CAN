@@ -258,6 +258,11 @@ class Hub:
                 if host not in (1, 2):
                     return self._ack(msg, False, "host must be 1 or 2")
                 return self._bridge_ack(msg, await self.bridge.request_lead(host))
+            if kind == "send_text":
+                node_id, text = msg.get("node_id"), msg.get("text")
+                if not isinstance(node_id, int) or not isinstance(text, str):
+                    return self._ack(msg, False, "send_text needs node_id and text")
+                return self._bridge_ack(msg, await self.bridge.send_text(node_id, text))
             if kind == "forget_node":
                 node_id = msg.get("node_id")
                 if not isinstance(node_id, int) or not 1 <= node_id <= 31:

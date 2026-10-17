@@ -48,6 +48,15 @@ struct BusStats {
   double rx_fps = 0;              // frames per second over the last full second
 };
 
+// One line of the bench text log: a text this host sent, or one a node sent (an echo or its own).
+struct TextLogEntry {
+  int64_t time_ns = 0;
+  bool outgoing = false;
+  uint8_t node = 0;  // outgoing: the target (0 = every node); incoming: the sender
+  uint8_t seq = 0;   // incoming: the echoed sequence number, 0 = the node's own text
+  std::string text;
+};
+
 struct GatewayState {
   int64_t time_ns = 0;
   uint8_t host_id = 0;
@@ -67,9 +76,11 @@ struct GatewayState {
   bool id_allocator = false;                // this host currently answers NODE_ID_REQUEST
   std::vector<IdAssignment> id_table;       // every board the allocator knows
   std::vector<GatewayEvent> recent_events;  // newest last, at most kRecentEvents
+  std::vector<TextLogEntry> texts;          // newest last, at most kTextLogSize
 };
 
 constexpr size_t kRecentEvents = 50;
+constexpr size_t kTextLogSize = 40;
 
 using EventCallback = std::function<void(const GatewayEvent&)>;
 using LogCallback = std::function<void(const std::string&)>;
@@ -100,6 +111,10 @@ class Gateway {
   // Frees node_id in the ID table so the pool can reuse it (the board itself keeps its stored ID
   // until it is wiped). BadArgument if no board holds that ID.
   CmdResult forget_node(uint8_t node_id);
+  // Bench text to node 0 (every node) or 4-30, up to 7 printable ASCII characters. Any role: it is
+  // debug traffic on the lowest-priority class, never a command. *seq_out = the sequence number
+  // the node will echo back.
+  CmdResult send_text(uint8_t node, const std::string& text, uint8_t* seq_out = nullptr);
 
   GatewayState state() const;
 
@@ -117,6 +132,7 @@ class Gateway {
   bool send(const CanFrame& f);
   void note_role_change_locked(Role old_role, uint16_t old_term);
   bool is_id_allocator_locked(int64_t now_ns) const;
+  void log_text_locked(TextLogEntry e);
   void on_id_request_locked(const NodeIdRequestMsg& m, int64_t now_ns, std::vector<GatewayEvent>& events,
                             std::vector<CanFrame>& out);
   void apply_realtime(int priority_offset);
@@ -134,6 +150,8 @@ class Gateway {
   NodeRegistry registry_;
   IdAllocator allocator_;
   std::vector<GatewayEvent> recent_events_;
+  std::vector<TextLogEntry> texts_;
+  uint8_t text_seq_ = 0;
   struct TargetSlot {
     WheelTarget target;
     int64_t set_ns = 0;  // 0 = never set

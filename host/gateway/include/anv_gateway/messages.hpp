@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <variant>
 
 namespace anv::gw {
@@ -130,6 +131,21 @@ struct NodeIdAssignMsg {
   uint8_t flags = 0;
 };
 
+// Bench/debug text (class 7, lowest priority): up to 7 ASCII characters. Host -> node at
+// 0x700 + 8 * node + 2/3/4 (from Orin / RPi / tool; node 0 = every node), node -> host at sub 5.
+constexpr size_t kTextMaxLen = 7;
+struct TextToNodeMsg {
+  uint8_t host = 0;  // sender: 1 Orin, 2 RPi, 3 tool
+  uint8_t node = 0;  // target, 0 = every node
+  uint8_t seq = 0;   // 1-255
+  std::string text;
+};
+struct TextFromNodeMsg {
+  uint8_t node = 0;
+  uint8_t seq = 0;  // the host text it echoes back, or 0 for text the node sent on its own
+  std::string text;
+};
+
 struct BootMsg {  // raw bytes: B4/A3 define the ISO-TP layer on top
   uint8_t node_id = 0;
   bool node_to_host = false;
@@ -140,7 +156,7 @@ struct BootMsg {  // raw bytes: B4/A3 define the ISO-TP layer on top
 using Message = std::variant<std::monostate, EstopMsg, EstopReleaseMsg, SyncMsg, NmtMsg, DebugLevelMsg, HostHbMsg,
                              LeadRequestMsg, DriveCmdMsg, DriveFbAMsg, DriveFbBMsg, DriveTelem0Msg, DriveTelem1Msg,
                              DriveDebugMsg, NodeHbMsg, NodeEventMsg, FpgaSensorsMsg, ServiceMsg, BootMsg,
-                             NodeIdRequestMsg, NodeIdAssignMsg>;
+                             NodeIdRequestMsg, NodeIdAssignMsg, TextToNodeMsg, TextFromNodeMsg>;
 
 // --- Scaled views (units from the DBC comments) ---
 inline double speed_rad_s(int16_t raw) { return raw * 0.01; }

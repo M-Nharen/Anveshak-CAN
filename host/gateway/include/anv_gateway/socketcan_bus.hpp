@@ -20,10 +20,11 @@ struct IdFilter {
 
 // The kernel receive filters the gateway installs: network, feedback, telemetry, sensor and heartbeat
 // classes, plus node 31's service slot (0x5F8-0x5FF: NODE_ID_REQUEST from unconfigured boards and
-// other hosts' NODE_ID_ASSIGN). Commands (class 1), other service (5) and bootloader (7) frames
-// never wake it. Defined here so tests can check every frame the gateway acts on gets through.
-constexpr std::array<IdFilter, 6> kGatewayRxFilters = {{
-    {0x000, 0x700}, {0x200, 0x700}, {0x300, 0x700}, {0x400, 0x700}, {0x600, 0x700}, {0x5F8, 0x7F8},
+// other hosts' NODE_ID_ASSIGN), plus text from nodes (class 7 sub 5). Commands (class 1), other
+// service (5) and bootloader (7) frames never wake it. Defined here so tests can check every frame
+// the gateway acts on gets through.
+constexpr std::array<IdFilter, 7> kGatewayRxFilters = {{
+    {0x000, 0x700}, {0x200, 0x700}, {0x300, 0x700}, {0x400, 0x700}, {0x600, 0x700}, {0x5F8, 0x7F8}, {0x705, 0x707},
 }};
 
 class SocketCanBus : public ICanBus {

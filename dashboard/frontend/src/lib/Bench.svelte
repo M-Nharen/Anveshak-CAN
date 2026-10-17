@@ -2,6 +2,7 @@
   // The RPi's 7" touch screen (1024x600): which nodes are on the bus, live, and what just changed.
   // Shown full-screen with ?kiosk in the URL, or as the Bench tab in the normal dashboard.
   import { command, toast } from './socket.js';
+  import Messages from './Messages.svelte';
 
   export let data; // snapshot.bench
   export let header; // snapshot.header
@@ -39,6 +40,38 @@
     seen = new Set([...(seen ?? []), ...keys]);
   }
 
+  // Nodes or Messages, remembered per screen so a reload keeps the view.
+  // ?view=messages in the URL wins (e.g. a kiosk that should open on Messages).
+  let view = 'nodes';
+  try {
+    const asked = new URLSearchParams(location.search).get('view') ?? localStorage.getItem('anv_bench_view');
+    view = asked === 'messages' ? 'messages' : 'nodes';
+  } catch {
+    /* default view */
+  }
+  function show(v) {
+    view = v;
+    try {
+      localStorage.setItem('anv_bench_view', v);
+    } catch {
+      /* not remembered */
+    }
+  }
+
+  // Text a node sent on its own gets a toast too, after the screen opened.
+  let seenMsgs = null;
+  $: if (data?.messages) {
+    if (seenMsgs !== null) {
+      for (const m of data.messages) if (m.dir === 'rx' && !seenMsgs.has(m.key)) toast(true, `${m.name}: ${m.text}`);
+    }
+    seenMsgs = new Set(data.messages.map((m) => m.key));
+  }
+
+  // The last text each node confirmed receiving, for its tile.
+  $: lastGot = Object.fromEntries(
+    (data?.nodes ?? []).map((n) => [n.node_id, (data.messages ?? []).find((m) => m.dir === 'tx' && m.received_by.includes(n.name))?.text]),
+  );
+
   // Long-press a tile to free its ID in the RPi's table (for retiring or swapping a board).
   let pressTimer = null;
   let forgetting = null;
@@ -75,6 +108,10 @@
         {#if header.estop}<span class="pill red">E-STOP LATCHED</span>{/if}
       {/if}
     </div>
+    <div class="views">
+      <button class:primary={view === 'nodes'} on:click={() => show('nodes')}>Nodes</button>
+      <button class:primary={view === 'messages'} on:click={() => show('messages')}>Messages</button>
+    </div>
     <div class="actions">
       {#if header?.gateway && header.leader !== 2}
         <button class="primary" disabled={!authed} on:click={() => command({ t: 'request_lead', host: 2 }, 'Make RPi lead')}>Make RPi lead</button>
@@ -86,6 +123,9 @@
     </div>
   </div>
 
+  {#if view === "messages"}
+    <Messages nodes={data?.nodes ?? []} messages={data?.messages ?? []} {authed} />
+  {:else}
   <div class="body">
     <div class="tiles">
       {#if data && data.nodes.length}
@@ -117,6 +157,7 @@
                 {/each}
               </div>
             {/if}
+            {#if lastGot[n.node_id]}<div class="got">Received: <code>{lastGot[n.node_id]}</code></div>{/if}
             <div class="foot muted">
               <span>TEC/REC {n.tec}/{n.rec}</span>
               {#if n.mac}<span>{macTail(n.mac)}</span>{/if}
@@ -145,6 +186,7 @@
       {#if !authed}<p class="muted small">Not logged in: buttons other than E-STOP are disabled.</p>{/if}
     </div>
   </div>
+  {/if}
 </div>
 
 {#if forgetting}
@@ -167,7 +209,9 @@
   .big { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .of { font-size: 18px; color: var(--muted); }
   .pills { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
-  .actions { display: flex; gap: 8px; }
+  .actions, .views { display: flex; gap: 8px; }
+  .views button { min-height: 48px; padding: 0 16px; font-size: 16px; }
+  .got { font-size: 13px; color: var(--ok); }
   .actions button { min-height: 48px; padding: 0 18px; font-size: 16px; }
   .actions .estop { min-width: 120px; }
 

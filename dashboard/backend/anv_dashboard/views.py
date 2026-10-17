@@ -255,4 +255,31 @@ def bench_view(st: dict[str, Any]) -> dict[str, Any]:
         "rx_fps": round(st["bus"]["rx_fps"]),
         "error_frames": st["bus"]["error_frames"],
         "events": events[:12],
+        "messages": messages_view(st),
     }
+
+
+def messages_view(st: dict[str, Any]) -> list[dict[str, Any]]:
+    """Newest first. Each text this host sent lists the nodes that echoed it back (proof they got it);
+    echoes are folded into their message, and only texts a node sent on its own appear separately."""
+    texts = st.get("texts", [])
+    echoes: dict[int, list[str]] = {}
+    for t in texts:
+        if t["dir"] == "rx" and t["seq"]:
+            echoes.setdefault(t["seq"], []).append(t["name"])
+    out = []
+    for t in reversed(texts):
+        if t["dir"] == "rx" and t["seq"]:
+            continue
+        msg = {
+            "key": f"{t['time_ns']}-{t['dir']}-{t['node_id']}",
+            "dir": t["dir"],
+            "node_id": t["node_id"],
+            "name": t["name"],
+            "text": t["text"],
+            "age_s": round(t["age_ms"] / 1000.0, 1),
+        }
+        if t["dir"] == "tx":
+            msg["received_by"] = sorted(set(echoes.get(t["seq"], [])))
+        out.append(msg)
+    return out[:20]

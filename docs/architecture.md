@@ -390,6 +390,17 @@ These are the unused sub-types of node 31's service slot, so no other ID moves.
 
 Boards using automatic IDs send the shared NODE\_HB layout at 0x600 + 8 × ID, and the generic 4 × u16 sensor layout at 0x400/0x401 + 8 × ID. The gateway decodes both for any node 16–30.
 
+**Bench text messages**
+
+Short text for bench tests and debugging, on the lowest-priority class so it can never delay control traffic:
+
+| ID | Sender | Payload |
+| --- | --- | --- |
+| 0x700 + 8 × node + 2 / 3 / 4 | Orin / RPi / tool, to one node (node 0 = every node) | SEQ (1–255), up to 7 ASCII characters |
+| 0x700 + 8 × node + 5 | The node | SEQ of the host text it is echoing, or 0 for its own text; up to 7 characters |
+
+A node echoes every text it receives, so the sender knows it arrived. The DBC holds the broadcast copies (0x702–0x704) and a TEXT\_FROM\_NODE template; every node uses the same layouts at its own IDs. Sub-types 0 and 1 of class 7 stay reserved for firmware transfer. Text is never a command: it changes nothing on the node.
+
 ## Message catalog
 
 Every frame on the bus is listed here with its exact layout. All multi-byte fields are **little-endian** (native on STM32, ESP32, Orin and RPi, so no byte swapping), and values are **scaled integers**, not floats, so 8 bytes hold as much as possible. The DBC file (end of this section) is the authoritative copy; this section explains it.

@@ -244,4 +244,46 @@ CanFrame make_aux_sensors(uint8_t node_id, bool second_half, const std::array<ui
   return f;
 }
 
+namespace {
+
+bool printable_text(const std::string& text) {
+  if (text.empty() || text.size() > kTextMaxLen) return false;
+  for (char c : text)
+    if (c < 0x20 || c > 0x7E) return false;
+  return true;
+}
+
+template <class S>
+void fill_text(S& s, uint8_t seq, const std::string& text) {
+  uint8_t c[kTextMaxLen] = {0};
+  for (size_t i = 0; i < text.size() && i < kTextMaxLen; ++i) c[i] = static_cast<uint8_t>(text[i]);
+  s.seq = seq;
+  s.c0 = c[0]; s.c1 = c[1]; s.c2 = c[2]; s.c3 = c[3]; s.c4 = c[4]; s.c5 = c[5]; s.c6 = c[6];
+}
+
+}  // namespace
+
+CanFrame make_text_to_node(uint8_t host, uint8_t node, uint8_t seq, const std::string& text) {
+  const bool node_ok = node == 0 || (node >= kNodeFirstDrive && node < kNodeUnconfigured);
+  if (host < kNodeOrin || host > kNodeTool || !node_ok || !printable_text(text)) return invalid_frame();
+  CanFrame f;
+  struct rover_text_to_node_rpi_t s;  // same layout for all three senders
+  rover_text_to_node_rpi_init(&s);
+  fill_text(s, seq, text);
+  ANV_PACK(f, ROVER_CAN_ID(ROVER_CLASS_BOOTLOADER, node, kTextSubFromHostBase + host), ROVER_TEXT_TO_NODE_RPI_LENGTH,
+           rover_text_to_node_rpi_pack, s);
+  return f;
+}
+
+CanFrame make_text_from_node(uint8_t node, uint8_t seq, const std::string& text) {
+  if (node < kNodeFirstDrive || node >= kNodeUnconfigured || !printable_text(text)) return invalid_frame();
+  CanFrame f;
+  struct rover_text_from_node_t s;
+  rover_text_from_node_init(&s);
+  fill_text(s, seq, text);
+  ANV_PACK(f, ROVER_CAN_ID(ROVER_CLASS_BOOTLOADER, node, kTextSubFromNode), ROVER_TEXT_FROM_NODE_LENGTH,
+           rover_text_from_node_pack, s);
+  return f;
+}
+
 }  // namespace anv::gw

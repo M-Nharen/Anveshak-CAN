@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include "anv_gateway/can_bus.hpp"
 #include "anv_gateway/messages.hpp"
@@ -23,6 +24,10 @@ CanFrame make_node_hb(const NodeHbMsg& hb);  // node_id 4-9 (drive), 20 (FPGA) o
 // host 1-3 picks the sender's own ID (0x5F8 / 0x5F9 / 0x5FA); other values return the empty frame.
 CanFrame make_node_id_assign(const NodeIdAssignMsg& msg);
 CanFrame make_node_id_request(const NodeIdRequestMsg& msg);  // what an unconfigured board sends
+// Text frames. node 0 (every node) or 4-30; text up to 7 printable ASCII characters. Anything else
+// returns the empty frame.
+CanFrame make_text_to_node(uint8_t host, uint8_t node, uint8_t seq, const std::string& text);
+CanFrame make_text_from_node(uint8_t node, uint8_t seq, const std::string& text);
 CanFrame make_aux_sensors(uint8_t node_id, bool second_half, const std::array<uint16_t, 4>& values);
 CanFrame make_drive_fb_a(const DriveFbAMsg& fb);
 

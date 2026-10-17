@@ -166,6 +166,10 @@ extern "C" {
 #define ROVER_NODE_ID_ASSIGN_ORIN_FRAME_ID (0x5f8u)
 #define ROVER_NODE_ID_ASSIGN_RPI_FRAME_ID (0x5f9u)
 #define ROVER_NODE_ID_ASSIGN_TOOL_FRAME_ID (0x5fau)
+#define ROVER_TEXT_TO_NODE_ORIN_FRAME_ID (0x702u)
+#define ROVER_TEXT_TO_NODE_RPI_FRAME_ID (0x703u)
+#define ROVER_TEXT_TO_NODE_TOOL_FRAME_ID (0x704u)
+#define ROVER_TEXT_FROM_NODE_FRAME_ID (0x7fdu)
 
 /* Frame lengths in bytes. */
 #define ROVER_ESTOP_LENGTH (1u)
@@ -289,6 +293,10 @@ extern "C" {
 #define ROVER_NODE_ID_ASSIGN_ORIN_LENGTH (8u)
 #define ROVER_NODE_ID_ASSIGN_RPI_LENGTH (8u)
 #define ROVER_NODE_ID_ASSIGN_TOOL_LENGTH (8u)
+#define ROVER_TEXT_TO_NODE_ORIN_LENGTH (8u)
+#define ROVER_TEXT_TO_NODE_RPI_LENGTH (8u)
+#define ROVER_TEXT_TO_NODE_TOOL_LENGTH (8u)
+#define ROVER_TEXT_FROM_NODE_LENGTH (8u)
 
 /* Extended or standard frame types. */
 #define ROVER_ESTOP_IS_EXTENDED (0)
@@ -412,6 +420,10 @@ extern "C" {
 #define ROVER_NODE_ID_ASSIGN_ORIN_IS_EXTENDED (0)
 #define ROVER_NODE_ID_ASSIGN_RPI_IS_EXTENDED (0)
 #define ROVER_NODE_ID_ASSIGN_TOOL_IS_EXTENDED (0)
+#define ROVER_TEXT_TO_NODE_ORIN_IS_EXTENDED (0)
+#define ROVER_TEXT_TO_NODE_RPI_IS_EXTENDED (0)
+#define ROVER_TEXT_TO_NODE_TOOL_IS_EXTENDED (0)
+#define ROVER_TEXT_FROM_NODE_IS_EXTENDED (0)
 
 /* Frame cycle times in milliseconds. */
 #define ROVER_SYNC_CYCLE_TIME_MS (20u)
@@ -965,6 +977,10 @@ extern "C" {
 #define ROVER_NODE_ID_ASSIGN_ORIN_NAME "NODE_ID_ASSIGN_ORIN"
 #define ROVER_NODE_ID_ASSIGN_RPI_NAME "NODE_ID_ASSIGN_RPI"
 #define ROVER_NODE_ID_ASSIGN_TOOL_NAME "NODE_ID_ASSIGN_TOOL"
+#define ROVER_TEXT_TO_NODE_ORIN_NAME "TEXT_TO_NODE_ORIN"
+#define ROVER_TEXT_TO_NODE_RPI_NAME "TEXT_TO_NODE_RPI"
+#define ROVER_TEXT_TO_NODE_TOOL_NAME "TEXT_TO_NODE_TOOL"
+#define ROVER_TEXT_FROM_NODE_NAME "TEXT_FROM_NODE"
 
 /* Signal Names. */
 #define ROVER_ESTOP_MAGIC_NAME "MAGIC"
@@ -1598,6 +1614,38 @@ extern "C" {
 #define ROVER_NODE_ID_ASSIGN_TOOL_MAC_NAME "MAC"
 #define ROVER_NODE_ID_ASSIGN_TOOL_ASSIGNED_ID_NAME "ASSIGNED_ID"
 #define ROVER_NODE_ID_ASSIGN_TOOL_FLAGS_NAME "FLAGS"
+#define ROVER_TEXT_TO_NODE_ORIN_SEQ_NAME "SEQ"
+#define ROVER_TEXT_TO_NODE_ORIN_C0_NAME "C0"
+#define ROVER_TEXT_TO_NODE_ORIN_C1_NAME "C1"
+#define ROVER_TEXT_TO_NODE_ORIN_C2_NAME "C2"
+#define ROVER_TEXT_TO_NODE_ORIN_C3_NAME "C3"
+#define ROVER_TEXT_TO_NODE_ORIN_C4_NAME "C4"
+#define ROVER_TEXT_TO_NODE_ORIN_C5_NAME "C5"
+#define ROVER_TEXT_TO_NODE_ORIN_C6_NAME "C6"
+#define ROVER_TEXT_TO_NODE_RPI_SEQ_NAME "SEQ"
+#define ROVER_TEXT_TO_NODE_RPI_C0_NAME "C0"
+#define ROVER_TEXT_TO_NODE_RPI_C1_NAME "C1"
+#define ROVER_TEXT_TO_NODE_RPI_C2_NAME "C2"
+#define ROVER_TEXT_TO_NODE_RPI_C3_NAME "C3"
+#define ROVER_TEXT_TO_NODE_RPI_C4_NAME "C4"
+#define ROVER_TEXT_TO_NODE_RPI_C5_NAME "C5"
+#define ROVER_TEXT_TO_NODE_RPI_C6_NAME "C6"
+#define ROVER_TEXT_TO_NODE_TOOL_SEQ_NAME "SEQ"
+#define ROVER_TEXT_TO_NODE_TOOL_C0_NAME "C0"
+#define ROVER_TEXT_TO_NODE_TOOL_C1_NAME "C1"
+#define ROVER_TEXT_TO_NODE_TOOL_C2_NAME "C2"
+#define ROVER_TEXT_TO_NODE_TOOL_C3_NAME "C3"
+#define ROVER_TEXT_TO_NODE_TOOL_C4_NAME "C4"
+#define ROVER_TEXT_TO_NODE_TOOL_C5_NAME "C5"
+#define ROVER_TEXT_TO_NODE_TOOL_C6_NAME "C6"
+#define ROVER_TEXT_FROM_NODE_SEQ_NAME "SEQ"
+#define ROVER_TEXT_FROM_NODE_C0_NAME "C0"
+#define ROVER_TEXT_FROM_NODE_C1_NAME "C1"
+#define ROVER_TEXT_FROM_NODE_C2_NAME "C2"
+#define ROVER_TEXT_FROM_NODE_C3_NAME "C3"
+#define ROVER_TEXT_FROM_NODE_C4_NAME "C4"
+#define ROVER_TEXT_FROM_NODE_C5_NAME "C5"
+#define ROVER_TEXT_FROM_NODE_C6_NAME "C6"
 
 /**
  * Signals in message ESTOP.
@@ -7103,6 +7151,266 @@ struct rover_node_id_assign_tool_t {
      * Offset: 0
      */
     uint8_t flags;
+};
+
+/**
+ * Signals in message TEXT_TO_NODE_ORIN.
+ *
+ * ORIN sends a short bench/debug text to a node: up to 7 ASCII characters (C0-C6, zero-padded) with a sequence number 1-255. This entry is the broadcast copy (node 0, every node); the same layout is used at 0x700 + 8 x node + 2 to address one node. Lowest-priority class, never used for control.
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_text_to_node_orin_t {
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t seq;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c0;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c1;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c2;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c3;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c4;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c5;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c6;
+};
+
+/**
+ * Signals in message TEXT_TO_NODE_RPI.
+ *
+ * RPI sends a short bench/debug text to a node: up to 7 ASCII characters (C0-C6, zero-padded) with a sequence number 1-255. This entry is the broadcast copy (node 0, every node); the same layout is used at 0x700 + 8 x node + 3 to address one node. Lowest-priority class, never used for control.
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_text_to_node_rpi_t {
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t seq;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c0;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c1;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c2;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c3;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c4;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c5;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c6;
+};
+
+/**
+ * Signals in message TEXT_TO_NODE_TOOL.
+ *
+ * TOOL sends a short bench/debug text to a node: up to 7 ASCII characters (C0-C6, zero-padded) with a sequence number 1-255. This entry is the broadcast copy (node 0, every node); the same layout is used at 0x700 + 8 x node + 4 to address one node. Lowest-priority class, never used for control.
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_text_to_node_tool_t {
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t seq;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c0;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c1;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c2;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c3;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c4;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c5;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c6;
+};
+
+/**
+ * Signals in message TEXT_FROM_NODE.
+ *
+ * Text from a node, sent at 0x700 + 8 x node + 5 (this entry is the layout template; node 31 never sends it). SEQ = the sequence number of the host text being echoed back (proof of receipt), or 0 for text the node sends on its own.
+ *
+ * All signal values are as on the CAN bus.
+ */
+struct rover_text_from_node_t {
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t seq;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c0;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c1;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c2;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c3;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c4;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c5;
+
+    /**
+     * Range: 0..255 (0..255 -)
+     * Scale: 1
+     * Offset: 0
+     */
+    uint8_t c6;
 };
 
 /**
@@ -25463,6 +25771,858 @@ bool rover_node_id_assign_tool_flags_is_in_range(uint8_t value);
  * @return true if in range, false otherwise.
  */
 bool rover_node_id_assign_tool_flags_is_in_phys_range(double value);
+
+/**
+ * Pack message TEXT_TO_NODE_ORIN.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_text_to_node_orin_pack(
+    uint8_t *dst_p,
+    const struct rover_text_to_node_orin_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message TEXT_TO_NODE_ORIN.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_text_to_node_orin_unpack(
+    struct rover_text_to_node_orin_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from TEXT_TO_NODE_ORIN.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_text_to_node_orin_init(struct rover_text_to_node_orin_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_seq_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_seq_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c0_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c0_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c1_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c1_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c2_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c2_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c3_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c3_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c4_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c4_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c5_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c5_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c6_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_orin_c6_is_in_phys_range(double value);
+
+/**
+ * Pack message TEXT_TO_NODE_RPI.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_text_to_node_rpi_pack(
+    uint8_t *dst_p,
+    const struct rover_text_to_node_rpi_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message TEXT_TO_NODE_RPI.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_text_to_node_rpi_unpack(
+    struct rover_text_to_node_rpi_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from TEXT_TO_NODE_RPI.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_text_to_node_rpi_init(struct rover_text_to_node_rpi_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_seq_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_seq_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c0_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c0_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c1_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c1_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c2_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c2_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c3_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c3_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c4_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c4_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c5_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c5_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c6_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_rpi_c6_is_in_phys_range(double value);
+
+/**
+ * Pack message TEXT_TO_NODE_TOOL.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_text_to_node_tool_pack(
+    uint8_t *dst_p,
+    const struct rover_text_to_node_tool_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message TEXT_TO_NODE_TOOL.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_text_to_node_tool_unpack(
+    struct rover_text_to_node_tool_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from TEXT_TO_NODE_TOOL.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_text_to_node_tool_init(struct rover_text_to_node_tool_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_seq_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_seq_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c0_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c0_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c1_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c1_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c2_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c2_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c3_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c3_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c4_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c4_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c5_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c5_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c6_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_to_node_tool_c6_is_in_phys_range(double value);
+
+/**
+ * Pack message TEXT_FROM_NODE.
+ *
+ * @param[out] dst_p Buffer to pack the message into.
+ * @param[in] src_p Data to pack.
+ * @param[in] size Size of dst_p.
+ *
+ * @return Size of packed data, or negative error code.
+ */
+int rover_text_from_node_pack(
+    uint8_t *dst_p,
+    const struct rover_text_from_node_t *src_p,
+    size_t size);
+
+/**
+ * Unpack message TEXT_FROM_NODE.
+ *
+ * @param[out] dst_p Object to unpack the message into.
+ * @param[in] src_p Message to unpack.
+ * @param[in] size Size of src_p.
+ *
+ * @return zero(0) or negative error code.
+ */
+int rover_text_from_node_unpack(
+    struct rover_text_from_node_t *dst_p,
+    const uint8_t *src_p,
+    size_t size);
+
+/**
+ * Init message fields to default values from TEXT_FROM_NODE.
+ *
+ * @param[in] msg_p Message to init.
+ *
+ * @return zero(0) on success or (-1) in case of nullptr argument.
+ */
+int rover_text_from_node_init(struct rover_text_from_node_t *msg_p);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_seq_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_seq_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c0_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c0_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c1_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c1_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c2_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c2_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c3_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c3_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c4_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c4_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c5_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c5_is_in_phys_range(double value);
+
+/**
+ * Check that given signal is in allowed range.
+ *
+ * @param[in] value Signal to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c6_is_in_range(uint8_t value);
+
+/**
+ * Check that given physical value is in allowed range before encoding.
+ *
+ * Use this BEFORE calling _encode() to avoid silent integer overflow:
+ *   encode(-1.0) on a [0,100] signal wraps to 255 and passes is_in_range().
+ *   is_in_phys_range(-1.0) correctly returns false.
+ *
+ * @param[in] value Physical signal value to check.
+ *
+ * @return true if in range, false otherwise.
+ */
+bool rover_text_from_node_c6_is_in_phys_range(double value);
 
 
 #ifdef __cplusplus

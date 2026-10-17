@@ -907,6 +907,46 @@ BO_ 1530 NODE_ID_ASSIGN_TOOL: 8 TOOL
   SG_ ASSIGNED_ID : 48|8@1+ (1,0) [0|31] "" ANY
   SG_ FLAGS : 56|8@1+ (1,0) [0|255] "" ANY
 
+BO_ 1794 TEXT_TO_NODE_ORIN: 8 ORIN
+  SG_ SEQ : 0|8@1+ (1,0) [0|255] "" ANY
+  SG_ C0 : 8|8@1+ (1,0) [0|255] "" ANY
+  SG_ C1 : 16|8@1+ (1,0) [0|255] "" ANY
+  SG_ C2 : 24|8@1+ (1,0) [0|255] "" ANY
+  SG_ C3 : 32|8@1+ (1,0) [0|255] "" ANY
+  SG_ C4 : 40|8@1+ (1,0) [0|255] "" ANY
+  SG_ C5 : 48|8@1+ (1,0) [0|255] "" ANY
+  SG_ C6 : 56|8@1+ (1,0) [0|255] "" ANY
+
+BO_ 1795 TEXT_TO_NODE_RPI: 8 RPI
+  SG_ SEQ : 0|8@1+ (1,0) [0|255] "" ANY
+  SG_ C0 : 8|8@1+ (1,0) [0|255] "" ANY
+  SG_ C1 : 16|8@1+ (1,0) [0|255] "" ANY
+  SG_ C2 : 24|8@1+ (1,0) [0|255] "" ANY
+  SG_ C3 : 32|8@1+ (1,0) [0|255] "" ANY
+  SG_ C4 : 40|8@1+ (1,0) [0|255] "" ANY
+  SG_ C5 : 48|8@1+ (1,0) [0|255] "" ANY
+  SG_ C6 : 56|8@1+ (1,0) [0|255] "" ANY
+
+BO_ 1796 TEXT_TO_NODE_TOOL: 8 TOOL
+  SG_ SEQ : 0|8@1+ (1,0) [0|255] "" ANY
+  SG_ C0 : 8|8@1+ (1,0) [0|255] "" ANY
+  SG_ C1 : 16|8@1+ (1,0) [0|255] "" ANY
+  SG_ C2 : 24|8@1+ (1,0) [0|255] "" ANY
+  SG_ C3 : 32|8@1+ (1,0) [0|255] "" ANY
+  SG_ C4 : 40|8@1+ (1,0) [0|255] "" ANY
+  SG_ C5 : 48|8@1+ (1,0) [0|255] "" ANY
+  SG_ C6 : 56|8@1+ (1,0) [0|255] "" ANY
+
+BO_ 2045 TEXT_FROM_NODE: 8 ANY
+  SG_ SEQ : 0|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C0 : 8|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C1 : 16|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C2 : 24|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C3 : 32|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C4 : 40|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C5 : 48|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+  SG_ C6 : 56|8@1+ (1,0) [0|255] "" ORIN,RPI,TOOL
+
 BO_TX_BU_ 1 : ORIN,RPI,TOOL;
 BO_TX_BU_ 2 : ORIN,RPI,TOOL;
 BO_TX_BU_ 3 : ORIN,RPI,TOOL;
@@ -926,6 +966,10 @@ BO_TX_BU_ 1864 : ORIN,RPI,TOOL;
 
 CM_ "Anveshak rover CAN bus definitions. Classic CAN 2.0A, 11-bit IDs, 500 kbps, 80% sample point. ID = (class << 8) | (node << 3) | sub. See docs/architecture.md for the full design.";
 CM_ BU_ ANY "Placeholder transmitter for ESTOP, which any node may send with an identical, fixed payload.";
+CM_ BO_ 1794 "ORIN sends a short bench/debug text to a node: up to 7 ASCII characters (C0-C6, zero-padded) with a sequence number 1-255. This entry is the broadcast copy (node 0, every node); the same layout is used at 0x700 + 8 x node + 2 to address one node. Lowest-priority class, never used for control.";
+CM_ BO_ 1795 "RPI sends a short bench/debug text to a node: up to 7 ASCII characters (C0-C6, zero-padded) with a sequence number 1-255. This entry is the broadcast copy (node 0, every node); the same layout is used at 0x700 + 8 x node + 3 to address one node. Lowest-priority class, never used for control.";
+CM_ BO_ 1796 "TOOL sends a short bench/debug text to a node: up to 7 ASCII characters (C0-C6, zero-padded) with a sequence number 1-255. This entry is the broadcast copy (node 0, every node); the same layout is used at 0x700 + 8 x node + 4 to address one node. Lowest-priority class, never used for control.";
+CM_ BO_ 2045 "Text from a node, sent at 0x700 + 8 x node + 5 (this entry is the layout template; node 31 never sends it). SEQ = the sequence number of the host text being echoed back (proof of receipt), or 0 for text the node sends on its own.";
 CM_ BO_ 1531 "Unconfigured node (no stored node ID) asks for one. MAC is the board's factory MAC, least-significant byte first. HW_TARGET: 0 ESP32, 1 ESP32-S3. Sent with random jitter; no heartbeats until an ID is assigned.";
 CM_ BO_ 1528 "ORIN assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).";
 CM_ BO_ 1529 "RPI assigns a node ID to the unconfigured board whose MAC matches. Sent by the allocator host (the master, or with no master the live host with the lowest tie-break).";

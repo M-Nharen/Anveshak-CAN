@@ -80,6 +80,9 @@ class FakeBridge:
     async def forget_node(self, node_id: int) -> dict[str, Any]:
         return await self._cmd("forget_node", node_id)
 
+    async def send_text(self, node_id: int, text: str) -> dict[str, Any]:
+        return await self._cmd("send_text", (node_id, text))
+
     async def close(self) -> None:
         pass
 

@@ -44,7 +44,14 @@ the RPi (`candump can0` should show `5FB` frames from the board) and check the w
 | `status` | Print the status line once |
 | `id` | MAC, node ID and build ID |
 | `forget` | Erase the saved node ID and restart, so the board asks for a new one |
+| `msg <text>` | Send up to 7 characters to the RPi; they show up in the touch screen's Messages view |
 | `raw <text>` | Send up to 8 characters on ID 0x7FF. Other bench boards print it, as the old test sketch did |
+
+## Messages from the screen
+
+The touch screen's **Messages** view sends up to 7 characters to one board or to all of them. The board
+prints `Message from RPi: <text>` here and echoes the text back, and the screen ticks the message as
+received by that node. Text from `msg <text>` goes the other way.
 
 ## How IDs are assigned
 

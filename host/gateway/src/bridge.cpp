@@ -109,6 +109,14 @@ std::string state_to_json(const GatewayState& s) {
   }
   o += "],\"events\":[";
   for (size_t i = 0; i < s.recent_events.size(); ++i) o += (i ? "," : "") + event_json(s.recent_events[i], s.time_ns);
+  o += "],\"texts\":[";
+  for (size_t i = 0; i < s.texts.size(); ++i) {
+    const TextLogEntry& t = s.texts[i];
+    o += std::string(i ? "," : "") + "{\"time_ns\":" + std::to_string(t.time_ns) +
+         ",\"age_ms\":" + num((s.time_ns - t.time_ns) / 1e6) + ",\"dir\":" + (t.outgoing ? "\"tx\"" : "\"rx\"") +
+         ",\"node_id\":" + std::to_string(t.node) + ",\"name\":" + json::quote(t.node == 0 ? "ALL" : node_name(t.node)) +
+         ",\"seq\":" + std::to_string(t.seq) + ",\"text\":" + json::quote(t.text) + "}";
+  }
   return o + "]}";
 }
 
@@ -219,6 +227,17 @@ std::string Bridge::handle(const std::string& line) {
     const json::Value* n = req.get("node_id");
     if (!n || n->type != json::Value::Number || n->num < 1 || n->num > 31) return fail("node_id must be 1-31");
     return result(gw_.forget_node(static_cast<uint8_t>(n->num)));
+  }
+  if (cmd == "send_text") {
+    const json::Value* n = req.get("node_id");
+    const json::Value* t = req.get("text");
+    if (!n || n->type != json::Value::Number || !t || t->type != json::Value::String)
+      return fail("send_text needs node_id and text");
+    uint8_t seq = 0;
+    const CmdResult r = gw_.send_text(static_cast<uint8_t>(n->num), t->str, &seq);
+    std::string reply = result(r);
+    if (r == CmdResult::Ok) reply.insert(reply.size() - 1, ",\"seq\":" + std::to_string(seq));
+    return reply;
   }
   if (cmd == "set_targets") {
     const json::Value* w = req.get("wheels");
