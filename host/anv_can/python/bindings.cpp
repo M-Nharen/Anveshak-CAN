@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "anv/codec.hpp"
+#include "convert.hpp"
 #include "anv/isotp.hpp"
 #include "anv/test_bus.hpp"
 #ifdef __linux__
@@ -15,6 +16,9 @@
 
 namespace py = pybind11;
 using namespace anv;
+using namespace anv_py;
+
+void bind_host(py::module_& m);  // host_bindings.cpp
 
 namespace {
 
@@ -25,53 +29,6 @@ struct CodecError : std::runtime_error {
 struct IsoTpError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
-
-Scalar to_scalar(const py::handle& v) {
-  if (py::isinstance<py::bool_>(v)) return v.cast<bool>();
-  if (py::isinstance<py::int_>(v)) {
-    const py::int_ i = py::reinterpret_borrow<py::int_>(v);
-    if (i < py::int_(0)) return v.cast<int64_t>();
-    return v.cast<uint64_t>();
-  }
-  if (py::isinstance<py::float_>(v)) return v.cast<double>();
-  if (py::isinstance<py::str>(v)) return v.cast<std::string>();
-  throw py::type_error("field values must be bool, int, float or str");
-}
-
-Values to_values(const py::dict& d) {
-  Values out;
-  for (const auto& kv : d) {
-    const std::string name = py::str(kv.first);
-    FieldValue fv;
-    if (py::isinstance<py::list>(kv.second) || py::isinstance<py::tuple>(kv.second)) {
-      for (const auto& item : kv.second) fv.push_back(to_scalar(item));
-    } else {
-      fv.push_back(to_scalar(kv.second));
-    }
-    out[name] = std::move(fv);
-  }
-  return out;
-}
-
-py::object from_scalar(const Scalar& s) {
-  return std::visit([](const auto& x) -> py::object { return py::cast(x); }, s);
-}
-
-py::dict from_values(const Message& m, const Values& v) {
-  py::dict d;
-  for (const Field& f : m.fields) {  // schema order, like the Python codec
-    auto it = v.find(f.name);
-    if (it == v.end()) continue;
-    if (f.count > 1) {
-      py::list l;
-      for (const Scalar& s : it->second) l.append(from_scalar(s));
-      d[py::str(f.name)] = l;
-    } else {
-      d[py::str(f.name)] = from_scalar(it->second.front());
-    }
-  }
-  return d;
-}
 
 py::dict enum_dict(const EnumValues& ev) {
   py::dict d;
@@ -398,4 +355,6 @@ PYBIND11_MODULE(_anv_can, m) {
       }, py::arg("timeout_ms") = 1000)
       .def_property_readonly("tx_id", &IsoTpChannel::tx_id)
       .def_property_readonly("rx_id", &IsoTpChannel::rx_id);
+
+  bind_host(m);
 }

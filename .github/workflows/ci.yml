@@ -198,7 +198,8 @@ jobs:
           exit 0
         shell: bash
 
-  # v2 host library (host/anv_can): C++ tests, Python bindings, cross-check against anv_schema.
+  # v2 host library (host/anv_can: anv_link, anv_proto, anv_host): C++ tests, Python bindings,
+  # cross-check against anv_schema.
   # Ubuntu 22.04 arm64 is the Jetson's OS (JetPack 6); Debian 12 arm64 is Raspberry Pi OS.
   host-lib:
     name: Host library anv_can (${{ matrix.name }})
@@ -236,7 +237,8 @@ jobs:
       - name: Lint
         run: /tmp/venv/bin/ruff check host/anv_can
 
-      # The vcan end-to-end test (anv-can send + dump) runs where the runner can load vcan.
+      # The vcan end-to-end tests (anv-can send + dump, anv-host against a fake node) run where
+      # the runner can load vcan.
       - name: Bring up vcan0 (best effort)
         if: matrix.container == ''
         run: |
