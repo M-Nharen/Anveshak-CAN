@@ -1,0 +1,31 @@
+[build-system]
+requires = ["scikit-build-core>=0.8", "pybind11>=2.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "anv-can"
+version = "0.1.0"
+description = "Anveshak CAN host library (anv_link + anv_proto, C++) with Python bindings and the anv-can tool"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+# anv-schema is only needed by the cross-check tests (they compare against its codec).
+test = ["pytest>=7"]
+
+[project.scripts]
+anv-can = "anv_can.cli:main"
+
+[tool.scikit-build]
+cmake.source-dir = "."
+wheel.packages = ["python/anv_can"]
+cmake.define = { ANV_CAN_PYTHON = "ON", ANV_CAN_TESTS = "OFF" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["anv_can"]
