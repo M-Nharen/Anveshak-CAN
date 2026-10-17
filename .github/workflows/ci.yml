@@ -70,13 +70,13 @@ jobs:
           ctest --test-dir build --output-on-failure
 
   bench-esp32-arduino:
-    name: Bench node sketch (Arduino-ESP32 3.3, WROOM + S3)
+    name: Bench node sketch on anv_node (Arduino-ESP32 3.3, WROOM + S3)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check src/anv matches firmware/core and firmware/generated
-        run: firmware/nodes/bench_esp32_arduino/sync_core.sh --check
+      - name: Check src/schema matches schema/generated
+        run: firmware/nodes/bench_esp32_arduino/sync_schema.sh --check
 
       - uses: arduino/setup-arduino-cli@v2
 
@@ -90,7 +90,9 @@ jobs:
       - name: Compile for the ESP32 (WROOM) and the ESP32-S3
         run: |
           for fqbn in esp32:esp32:esp32 esp32:esp32:esp32s3; do
-            arduino-cli compile --fqbn "$fqbn" --warnings all firmware/nodes/bench_esp32_arduino
+            arduino-cli compile --fqbn "$fqbn" --warnings all \
+              --library firmware/lib/anv_link --library firmware/lib/anv_proto --library firmware/lib/anv_node \
+              firmware/nodes/bench_esp32_arduino
           done
 
   # v2 libraries (firmware/lib): the Linux unit tests run in the firmware job above. These build the

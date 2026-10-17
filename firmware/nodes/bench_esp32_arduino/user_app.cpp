@@ -4,8 +4,7 @@
 
 #include "board_pins.h"
 
-// Example: the LED 5 s on, 5 s off. Set to 1, export the binary (Sketch > Export Compiled Binary)
-// and flash it over CAN; set back to 0 and flash again to get the CAN status LED back.
+// Example: the LED 5 s on, 5 s off. Set to 1 and flash; set back to 0 to get the CAN status LED back.
 #define USER_BLINK_DEMO 0
 
 void user_setup() {

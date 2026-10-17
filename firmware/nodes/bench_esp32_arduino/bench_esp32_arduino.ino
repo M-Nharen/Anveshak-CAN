@@ -1,242 +1,132 @@
 // Anveshak bench node for WROOM (ESP32) and ESP32-S3 boards, Arduino-ESP32 core 3.3+.
 //
-// Every board runs this same sketch. A board with no node ID saved asks the RPi for one over CAN
-// (NODE_ID_REQUEST with its MAC), saves the answer and restarts as a normal rover node: heartbeat
-// at 10 Hz, a 4-value sensor frame at 10 Hz, E-stop / NMT / leader tracking from anveshak_can_core.
-// See README.md and docs/architecture.md "Automatic node IDs".
+// Every board runs this same sketch, built on the v2 libraries in firmware/lib: anv_link (TWAI,
+// 29-bit IDs), anv_proto and anv_node (the node runtime). The node type is `esp32_bench`
+// (schema/types/esp32_bench.yaml): a `status` stream with four numbers about the board and a
+// `blink` action. A board with no ID asks the hosts for one (id_request with its MAC), keeps the
+// answer in NVS and then runs as a normal node: heartbeat, settings, stream rates, arm/disarm,
+// E-stop and leader tracking all come from anv_node. See README.md.
 //
-// src/anv/ is a copy of firmware/core and firmware/generated made by sync_core.sh: edit those, not it.
+// src/schema/ is a copy of the generated code made by sync_schema.sh: edit schema/, not it.
 #include <Arduino.h>
-#include <Preferences.h>
 
-#include "esp_mac.h"
+#include "anv_link.h"
+#include "anv_link_twai.h"
+#include "anv_node.h"
+#include "anv_node_esp32.h"
 
 #include "board_pins.h"
 #include "led.h"
-#include "ota_can.h"
-#include "twai_arduino_driver.h"
+#include "src/schema/anv_esp32_bench.h"
 #include "user_app.h"
 
-#include "src/anv/anv_node.h"
-#include "src/anv/ids.h"
-#include "src/anv/rover.h"
-
 // ---------------- configuration ----------------
-constexpr uint32_t kBitrate = 500000;
-constexpr uint8_t kNodeType = 3;  // NODE_HB NODE_TYPE 3 = science / auxiliary
-constexpr uint8_t kProtocolVersion = 1;
-constexpr uint32_t kHbRateHz = 10;
-constexpr uint32_t kSensorRateHz = 10;
-constexpr size_t kTxqCapPerPrio = 8;
-constexpr uint16_t kRawTextId = 0x7FF;  // serial "raw" text frames: lowest priority, unused by the DBC
-// Bench text (docs/architecture.md, TEXT_TO_NODE / TEXT_FROM_NODE): class 7, sub 2/3/4 = from the
-// Orin / RPi / tool, to this node or to node 0 (everyone); sub 5 = this node's replies.
-constexpr uint8_t kTextSubFromHostFirst = 2, kTextSubFromHostLast = 4, kTextSubFromNode = 5;
-constexpr size_t kTextMaxLen = 7;
-constexpr uint32_t kRequestFirstMinMs = 100, kRequestFirstSpanMs = 500;  // first request jitter
-constexpr uint32_t kRequestEveryMs = 400, kRequestSpanMs = 200;          // then every 400-600 ms
-
+constexpr uint32_t kIdentifyMs = 5000;  // NMT identify: blink this long
+constexpr size_t kTextMaxLen = 7;       // characters in one protocol `text` frame
 
 // ---------------- state ----------------
-enum class Mode : uint8_t { WaitingForId, Running };
-
-static twai_ard_ctx_t s_can_ctx;
-static acc_can_driver_t s_can;
+static anv_twai_t s_twai;
+static anv_link_t s_link;
 static anv_node_t s_node;
-static acc_can_frame_t s_txq_storage[ACC_CAN_PRIO_COUNT * kTxqCapPerPrio];
-static anv_param_store_t s_params;  // empty: no tunable parameters on the bench node
-static anv_rate_sched_t s_sensor_sched;
-static Preferences s_prefs;
-
-static Mode s_mode = Mode::WaitingForId;
-static uint8_t s_node_id = ROVER_NODE_UNCONFIGURED;
-static uint64_t s_mac = 0;
-static uint32_t s_next_request_ms = 0;
-static uint32_t s_rx_frames = 0;
+static anv_node_nvs_t s_nvs;
+static bool s_can_ok = false;
 static bool s_diag = true;
-static bool s_host_heard = false;  // any host heartbeat since boot (lets a new image confirm itself)
-static bool s_rollback_reported = false;
+static uint32_t s_blink_until = 0;
+static uint8_t s_text_seq = 0;
 
-// ---------------- board hooks for anveshak_can_core ----------------
-static uint32_t hook_now_ms(void*) { return millis(); }
-static void hook_outputs_off(void*) {}  // no actuators on the bench node
-static void hook_feed_watchdog(void*) {}
-static void hook_reset(void*) { ESP.restart(); }  // NMT RESET from the dashboard
-
-static const anv_board_hooks_t s_hooks = {
-    .ctx = nullptr,
-    .read_node_id = nullptr,  // the ID comes from NVS, not a switch
-    .set_outputs_off = hook_outputs_off,
-    .feed_hw_watchdog = hook_feed_watchdog,
-    .now_ms = hook_now_ms,
-    .enter_bootloader = nullptr,
-    .request_reset = hook_reset,
-    .storage_load = nullptr,
-    .storage_save = nullptr,
-};
-
-// ---------------- helpers ----------------
-static uint64_t read_mac() {
-  uint8_t m[6] = {0};
-  esp_efuse_mac_get_default(m);
-  uint64_t v = 0;
-  for (uint8_t b : m) v = (v << 8) | b;  // m[0] is the first byte as printed: aa:bb:...
-  return v;
+// A build ID that changes with every compile, for the info page (the hosts show it).
+static uint32_t build_id() {
+  uint32_t h = 2166136261u;
+  for (const char* p = __DATE__ " " __TIME__; *p; ++p) h = (h ^ static_cast<uint8_t>(*p)) * 16777619u;
+  return h;
 }
 
-static void print_mac(uint64_t mac) {
-  Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x", (unsigned)(mac >> 40) & 0xFF, (unsigned)(mac >> 32) & 0xFF,
-                (unsigned)(mac >> 24) & 0xFF, (unsigned)(mac >> 16) & 0xFF, (unsigned)(mac >> 8) & 0xFF,
-                (unsigned)mac & 0xFF);
+static void print_mac(const uint8_t* m) {
+  Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
 
-// IDs a board may take: auxiliary 16-30 plus drive/arm IDs for later reuse; never hosts or 31.
-static bool valid_node_id(uint8_t id) { return id >= ROVER_NODE_DRIVE1 && id < ROVER_NODE_UNCONFIGURED; }
+// ---------------- node hooks ----------------
+// The bench board drives nothing, so there is nothing to switch off. A board with actuators
+// stops them here: the runtime calls this at start and every time the node leaves ARMED.
+static void hook_outputs_off(anv_node_t*, void*) {}
 
-static bool bus_off() {
-  acc_can_error_state_t st;
-  return s_can.get_error_state(s_can.ctx, &st) == ACC_CAN_OK && st.state == ACC_CAN_BUS_OFF;
+static void hook_setup(anv_node_t*, void*) { user_setup(); }
+
+static void hook_loop(anv_node_t*, uint32_t now_ms, void*) { user_loop(now_ms); }
+
+// The `status` stream, at whatever rate a host set (10 Hz by default).
+static bool hook_fill_stream(anv_node_t*, const anv_msg_desc_t* msg, uint8_t out[8], void*) {
+  if (msg->port != ANV_ESP32_BENCH_STATUS_PORT) return false;
+  anv_esp32_bench_status_t m;
+  m.chip_temp = anv_esp32_bench_status_chip_temp_from_phys(temperatureRead());
+  m.free_heap = static_cast<uint16_t>(ESP.getFreeHeap() / 1024u);
+  m.rx_frames = static_cast<uint16_t>(anv_link_stats(&s_link)->rx_frames);
+  m.tx_frames = static_cast<uint16_t>(s_twai.tx_ok);
+  anv_esp32_bench_status_pack(out, &m);
+  return true;
 }
 
-static const char* state_name(anv_state_t st) {
-  switch (st) {
-    case ANV_STATE_BOOT: return "BOOT";
-    case ANV_STATE_DISARMED: return "DISARMED";
-    case ANV_STATE_ARMED: return "ARMED";
-    case ANV_STATE_FAULT: return "FAULT";
-    case ANV_STATE_ESTOP: return "ESTOP";
-    case ANV_STATE_BOOTLOADER: return "BOOTLOADER";
-  }
-  return "?";
+static uint8_t hook_action(anv_node_t*, const anv_action_desc_t* action, anv_value_t arg, void*) {
+  if (action->index != ANV_ESP32_BENCH_ACTION_BLINK) return ANV_SERVICE_STATUS_BAD_INDEX;
+  if (arg.u < 1 || arg.u > 60) return ANV_SERVICE_STATUS_OUT_OF_RANGE;  // the schema's limits
+  s_blink_until = millis() + arg.u * 1000u;
+  Serial.printf("Blinking for %lu s\n", static_cast<unsigned long>(arg.u));
+  return ANV_SERVICE_STATUS_OK;
 }
 
-// ---------------- waiting for an ID ----------------
-static void send_id_request() {
-  rover_node_id_request_t req;
-  rover_node_id_request_init(&req);
-  req.mac = s_mac;
-  req.node_type = kNodeType;
-  req.hw_target = BENCH_HW_TARGET;
-  acc_can_frame_t f;
-  f.id = ROVER_NODE_ID_REQUEST_FRAME_ID;
-  const int n = rover_node_id_request_pack(f.data, &req, sizeof(f.data));
-  if (n < 0) return;
-  f.dlc = static_cast<uint8_t>(n);
-  (void)s_can.send(s_can.ctx, &f, ACC_CAN_PRIO_SERVICE);
+static void hook_identify(anv_node_t*, void*) {
+  s_blink_until = millis() + kIdentifyMs;
+  Serial.println("Identify: blinking");
 }
 
-// Any host's NODE_ID_ASSIGN: same layout on all three IDs, so one unpacker reads them all.
-static void on_frame_while_waiting(const acc_can_frame_t& f) {
-  if (f.id != ROVER_NODE_ID_ASSIGN_ORIN_FRAME_ID && f.id != ROVER_NODE_ID_ASSIGN_RPI_FRAME_ID &&
-      f.id != ROVER_NODE_ID_ASSIGN_TOOL_FRAME_ID)
-    return;
-  rover_node_id_assign_rpi_t a;
-  if (rover_node_id_assign_rpi_unpack(&a, f.data, f.dlc) != 0 || a.mac != s_mac) return;
-  if (!valid_node_id(a.assigned_id)) {
-    Serial.printf("Host offered invalid node ID %u, ignoring\n", a.assigned_id);
-    return;
-  }
-  s_prefs.putUChar("node_id", a.assigned_id);
-  Serial.printf("Assigned node ID %u by host %u; restarting as that node\n", a.assigned_id,
-                (unsigned)ROVER_ID_SUB(f.id) + 1u);
-  Serial.flush();
-  // Restart rather than switch over live: one boot path, and the node starts with a clean state.
-  ESP.restart();
+static void hook_state_changed(anv_node_t* node, uint8_t from, uint8_t to, void*) {
+  Serial.printf("State %s -> %s", anv_node_state_name(from), anv_node_state_name(to));
+  if (anv_node_id(node) != ANV_NODE_UNASSIGNED) Serial.printf(" (node %u)", anv_node_id(node));
+  Serial.println();
 }
 
-// ---------------- running as a node ----------------
-// Update replies go out right away rather than waiting for the next loop's drain.
-static bool ota_send(const acc_can_frame_t& f) {
-  const bool queued = anv_node_send(&s_node, ACC_CAN_PRIO_SERVICE, &f);
-  (void)anv_node_drain_tx(&s_node);
-  return queued;
-}
-static bool ota_armed() { return anv_node_state(&s_node) == ANV_STATE_ARMED; }
-
-static void start_node(uint8_t node_id) {
-  const uint32_t now = millis();
-  anv_param_store_init(&s_params, nullptr, nullptr, 0, &s_hooks);
-  anv_node_info_t info = {};
-  info.git_build_id = ota_fw_build_id();
-  info.mcu_unique_id = static_cast<uint32_t>(s_mac);
-  anv_node_init(&s_node, node_id, kNodeType, kProtocolVersion, &s_can, s_txq_storage, kTxqCapPerPrio, &s_params,
-                &info, &s_hooks, now);
-  anv_node_boot_complete(&s_node);
-  anv_node_set_hb_rate(&s_node, kHbRateHz, now);
-  anv_rate_sched_init(&s_sensor_sched, kSensorRateHz, now);
-  ota_init(node_id, OtaHooks{ota_send, ota_armed});
-  s_mode = Mode::Running;
-}
-
-// Four live values for the dashboard tile: chip temperature (0.01 degC), free heap (KiB), and
-// the low 16 bits of the frames received / sent. Replace with real sensors on a science board.
-static void send_sensor_frame() {
-  rover_fpga_sensors_a_t m;
-  rover_fpga_sensors_a_init(&m);
-  m.sensor_1 = static_cast<uint16_t>(constrain(temperatureRead() * 100.0f, 0.0f, 65535.0f));
-  m.sensor_2 = static_cast<uint16_t>(ESP.getFreeHeap() / 1024u);
-  m.sensor_3 = static_cast<uint16_t>(s_rx_frames);
-  m.sensor_4 = static_cast<uint16_t>(s_can_ctx.tx_ok_count);
-  acc_can_frame_t f;
-  f.id = ROVER_CAN_ID(ROVER_CLASS_SENSOR, s_node_id, 0u);  // generic 4x u16 layout at this node's ID
-  const int n = rover_fpga_sensors_a_pack(f.data, &m, sizeof(f.data));
-  if (n < 0) return;
-  f.dlc = static_cast<uint8_t>(n);
-  (void)anv_node_send(&s_node, ACC_CAN_PRIO_TELEMETRY, &f);
-}
-
-// ---------------- bench text ----------------
-static const char* host_name(uint8_t sub) {
-  switch (sub) {
-    case 2: return "Orin";
-    case 3: return "RPi";
-    default: return "tool";
-  }
-}
-
-// seq = the host text being echoed back, or 0 for text typed on this board's serial console.
-static bool send_text(uint8_t seq, const char* text, size_t len) {
-  rover_text_from_node_t m;
-  rover_text_from_node_init(&m);
-  uint8_t c[kTextMaxLen] = {0};
-  memcpy(c, text, min(len, kTextMaxLen));
+static bool send_text(anv_node_id_t dst, uint8_t seq, const char* text, size_t len) {
+  anv_text_t m = {};
   m.seq = seq;
-  m.c0 = c[0]; m.c1 = c[1]; m.c2 = c[2]; m.c3 = c[3]; m.c4 = c[4]; m.c5 = c[5]; m.c6 = c[6];
-  acc_can_frame_t f;
-  f.id = ROVER_CAN_ID(ROVER_CLASS_BOOTLOADER, s_node_id, kTextSubFromNode);
-  const int n = rover_text_from_node_pack(f.data, &m, sizeof(f.data));
-  if (n < 0) return false;
-  f.dlc = static_cast<uint8_t>(n);
-  return anv_node_send(&s_node, ACC_CAN_PRIO_SERVICE, &f);
+  memcpy(m.chars, text, min(len, kTextMaxLen));
+  uint8_t data[8];
+  const anv_proto_addr_t addr = {ANV_TEXT_PRIORITY, dst, ANV_TEXT_PORT, anv_node_id(&s_node)};
+  anv_link_frame_t f;
+  return anv_proto_frame(&f, &addr, data, anv_text_pack(data, &m)) && anv_node_send_frame(&s_node, &f);
 }
 
-// A host's text for this node (or for everyone): print it and echo it back, so the screen shows the
-// node really received it. Returns false for frames that aren't host text to us.
-static bool on_text_frame(const acc_can_frame_t& f) {
-  const uint8_t node = ROVER_ID_NODE(f.id), sub = ROVER_ID_SUB(f.id);
-  if (ROVER_ID_CLASS(f.id) != ROVER_CLASS_BOOTLOADER || sub < kTextSubFromHostFirst || sub > kTextSubFromHostLast ||
-      (node != s_node_id && node != ROVER_NODE_BROADCAST))
-    return false;
-  rover_text_to_node_rpi_t m;  // same layout from every host
-  if (rover_text_to_node_rpi_unpack(&m, f.data, f.dlc) != 0) return true;
-  const uint8_t c[kTextMaxLen] = {m.c0, m.c1, m.c2, m.c3, m.c4, m.c5, m.c6};
+// The raw-frame hook: text from a host (the touch screen's Messages view) is printed and echoed
+// back with the same seq, so the screen can tick it as received. The runtime has no use for
+// `text` frames, which is why they arrive here.
+static void hook_frame(anv_node_t* node, const anv_link_frame_t* f, void*) {
+  if (anv_id_port(f->id) != ANV_TEXT_PORT) return;
+  anv_text_t m;
+  if (!anv_text_unpack(&m, f->data, f->len)) return;
   char text[kTextMaxLen + 1] = {0};
   size_t len = 0;
-  while (len < kTextMaxLen && c[len] != 0) {
-    text[len] = (c[len] >= 0x20 && c[len] < 0x7F) ? static_cast<char>(c[len]) : '?';
+  while (len < kTextMaxLen && m.chars[len] != 0) {
+    text[len] = (m.chars[len] >= 0x20 && m.chars[len] < 0x7F) ? static_cast<char>(m.chars[len]) : '?';
     ++len;
   }
-  Serial.printf("Message from %s%s: %s\n", host_name(sub), node == ROVER_NODE_BROADCAST ? " (to everyone)" : "", text);
-  if (len > 0) send_text(m.seq, text, len);
-  return true;
+  const bool to_all = anv_id_dst(f->id) == ANV_NODE_BROADCAST;
+  Serial.printf("Message from %u%s: %s\n", anv_id_src(f->id), to_all ? " (to everyone)" : "", text);
+  if (len > 0 && anv_node_id(node) != ANV_NODE_UNASSIGNED) send_text(anv_id_src(f->id), m.seq, text, len);
 }
 
 // ---------------- serial console ----------------
 static void print_status() {
   twai_node_status_t st;
   twai_node_record_t rec;
-  if (!twai_ard_get_info(&s_can_ctx, &st, &rec)) {
-    Serial.println("TWAI not running");
+  Serial.printf("[%lu] ", static_cast<unsigned long>(millis()));
+  const anv_node_id_t id = anv_node_id(&s_node);
+  if (id == ANV_NODE_UNASSIGNED) {
+    Serial.print("waiting for node ID");
+  } else {
+    Serial.printf("node=%u %s", id, anv_node_state_name(anv_node_state(&s_node)));
+  }
+  if (anv_node_has_leader(&s_node)) Serial.printf(" leader=%u", anv_node_leader(&s_node));
+  if (!s_can_ok || !anv_twai_get_info(&s_twai, &st, &rec)) {
+    Serial.println("  TWAI not running");
     return;
   }
   const char* bus;
@@ -247,29 +137,18 @@ static void print_status() {
     case TWAI_ERROR_BUS_OFF: bus = "BUS-OFF"; break;
     default: bus = "UNKNOWN"; break;
   }
-  Serial.printf("[%lu] ", (unsigned long)millis());
-  if (s_mode == Mode::Running) {
-    Serial.printf("node=%u %s master=%u", s_node_id, state_name(anv_node_state(&s_node)), s_node.master.master_node_id);
-  } else {
-    Serial.print("waiting for node ID");
-  }
-  Serial.printf("  bus=%s tec=%u rec=%u buserr=%lu  tx_ok=%lu rx=%lu rx_drop=%lu\n", bus, (unsigned)st.tx_error_count,
-                (unsigned)st.rx_error_count, (unsigned long)rec.bus_err_num, (unsigned long)s_can_ctx.tx_ok_count,
-                (unsigned long)s_rx_frames, (unsigned long)s_can_ctx.rx_dropped);
-}
-
-static void send_raw_text(const char* text) {
-  acc_can_frame_t f;
-  f.id = kRawTextId;
-  f.dlc = static_cast<uint8_t>(min<size_t>(strlen(text), 8));
-  memcpy(f.data, text, f.dlc);
-  const int r = s_can.send(s_can.ctx, &f, ACC_CAN_PRIO_SERVICE);
-  Serial.println(r == ACC_CAN_OK ? "Sent!" : "Send failed (queue full or bus-off)");
+  const anv_link_stats_t* ls = anv_link_stats(&s_link);
+  Serial.printf("  bus=%s tec=%u rec=%u buserr=%lu  tx_ok=%lu rx=%lu rx_drop=%lu\n", bus,
+                static_cast<unsigned>(st.tx_error_count), static_cast<unsigned>(st.rx_error_count),
+                static_cast<unsigned long>(rec.bus_err_num), static_cast<unsigned long>(s_twai.tx_ok),
+                static_cast<unsigned long>(ls->rx_frames), static_cast<unsigned long>(ls->rx_overflow));
 }
 
 static void handle_command(char* line) {
+  unsigned id = 0;
   if (strcmp(line, "help") == 0) {
-    Serial.println("commands: diag (toggle the 1 s status line), status, id, forget, msg <text>, raw <text>");
+    Serial.println("commands: diag (toggle the 1 s status line), status, id, setid <1-254>, forget, "
+                   "msg <text>, estop");
   } else if (strcmp(line, "diag") == 0) {
     s_diag = !s_diag;
     Serial.printf("periodic status %s\n", s_diag ? "on" : "off");
@@ -277,27 +156,30 @@ static void handle_command(char* line) {
     print_status();
   } else if (strcmp(line, "id") == 0) {
     Serial.print("MAC ");
-    print_mac(s_mac);
-    if (s_mode == Mode::Running) {
-      Serial.printf("  node ID %u  build %04x\n", s_node_id, ota_fw_build_id());
+    print_mac(s_node.cfg.mac);
+    if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
+      Serial.print("  no node ID yet");
     } else {
-      Serial.printf("  no node ID yet  build %04x\n", ota_fw_build_id());
+      Serial.printf("  node ID %u%s", anv_node_id(&s_node), s_node.id_saved ? " (saved)" : "");
     }
+    Serial.printf("  type %s  build %08lx\n", anv_esp32_bench_type.name, static_cast<unsigned long>(build_id()));
+  } else if (sscanf(line, "setid %u", &id) == 1) {
+    Serial.println(anv_node_save_id(&s_node, static_cast<anv_node_id_t>(id)) ? "Node ID saved"
+                                                                               : "Refused (1-254, and not while armed)");
   } else if (strcmp(line, "forget") == 0) {
-    s_prefs.remove("node_id");
-    Serial.println("Node ID erased; restarting to ask for a new one");
-    Serial.flush();
-    ESP.restart();
+    Serial.println(anv_node_forget_id(&s_node) ? "Node ID erased; asking the hosts for a new one"
+                                               : "Refused while armed");
   } else if (strncmp(line, "msg ", 4) == 0) {
-    if (s_mode != Mode::Running) {
-      Serial.println("No node ID yet: messages go out once the RPi has given this board an ID");
+    if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
+      Serial.println("No node ID yet: messages go out once a host has given this board an ID");
     } else {
       const size_t len = strlen(line + 4);
-      if (len > kTextMaxLen) Serial.printf("Only the first %u characters fit in one frame\n", (unsigned)kTextMaxLen);
-      Serial.println(send_text(0, line + 4, len) ? "Message queued for the screen" : "Send queue full");
+      if (len > kTextMaxLen) Serial.printf("Only the first %u characters fit in one frame\n", unsigned(kTextMaxLen));
+      Serial.println(send_text(ANV_NODE_BROADCAST, ++s_text_seq, line + 4, len) ? "Message sent" : "Send queue full");
     }
-  } else if (strncmp(line, "raw ", 4) == 0) {
-    send_raw_text(line + 4);
+  } else if (strcmp(line, "estop") == 0) {
+    anv_node_estop(&s_node, 0);
+    Serial.println("E-stop sent; every node is latched until the leader releases it");
   } else {
     Serial.printf("unknown command '%s' (try help)\n", line);
   }
@@ -329,79 +211,68 @@ void setup() {
   digitalWrite(BENCH_TCAN_STB_GPIO, LOW);  // TCAN normal mode
 #endif
   led_init();
-  delay(500);  // let a freshly opened serial monitor catch the boot lines
 
-  s_mac = read_mac();
-  s_prefs.begin("anveshak", false);
-  const uint8_t stored = s_prefs.getUChar("node_id", 0);
+  anv_node_config_t cfg;
+  anv_node_config_default(&cfg);
+  cfg.type = &anv_esp32_bench_type;
+  cfg.link = &s_link;
+  anv_node_nvs_init(&s_nvs, "anv_node");
+  cfg.storage = anv_node_nvs_ops();
+  cfg.storage_ctx = &s_nvs;
+  anv_node_esp32_identity(&cfg, &s_nvs);
+  cfg.info.fw_build = build_id();
+  cfg.save_assigned_id = true;  // a board keeps its ID across reboots; `forget` asks again
+  cfg.outputs_off = hook_outputs_off;
+  cfg.setup = hook_setup;
+  cfg.loop = hook_loop;
+  cfg.fill_stream = hook_fill_stream;
+  cfg.on_action = hook_action;
+  cfg.on_identify = hook_identify;
+  cfg.on_reset = anv_node_esp32_restart;
+  cfg.on_state_changed = hook_state_changed;
+  cfg.on_frame = hook_frame;
 
   Serial.println();
-  Serial.print("=== Anveshak bench node, MAC ");
-  print_mac(s_mac);
-  Serial.printf(", build %04x, TX %d RX %d ===\n", ota_fw_build_id(), BENCH_CAN_TX_GPIO, BENCH_CAN_RX_GPIO);
-  ota_check_last_update();
+  Serial.print("=== Anveshak bench node (anv_node), MAC ");
+  print_mac(cfg.mac);
+  Serial.printf(", build %08lx, TX %d RX %d ===\n", static_cast<unsigned long>(build_id()), BENCH_CAN_TX_GPIO,
+                BENCH_CAN_RX_GPIO);
 
-  s_can = twai_ard_make_driver(&s_can_ctx, BENCH_CAN_TX_GPIO, BENCH_CAN_RX_GPIO);
-  if (s_can.init(s_can.ctx, kBitrate, nullptr, 0) != ACC_CAN_OK) {
-    Serial.println("TWAI init FAILED: check the pins in board_pins.h");
-    for (;;) {
-      led_update(millis(), LedMode::BusOff, 0);
-      delay(100);
-    }
+  anv_twai_setup(&s_twai, BENCH_CAN_TX_GPIO, BENCH_CAN_RX_GPIO);
+  anv_link_init(&s_link, anv_twai_ops(), &s_twai);
+  anv_link_config_t link_cfg;
+  anv_link_config_default(&link_cfg);  // 500 kbit/s; anv_node sets the filters
+  s_can_ok = anv_link_start(&s_link, &link_cfg) == ANV_LINK_OK;
+  if (!s_can_ok) Serial.println("TWAI start FAILED: check the pins in board_pins.h");
+
+  if (!anv_node_init(&s_node, &cfg)) {
+    Serial.println("anv_node_init FAILED");  // only if the type outgrew the tables
   }
-
-  if (valid_node_id(stored)) {
-    s_node_id = stored;
-    Serial.printf("Node ID %u (saved). Type 'forget' to ask for a new one.\n", s_node_id);
-    start_node(s_node_id);
-  } else {
-    randomSeed(static_cast<uint32_t>(s_mac ^ (s_mac >> 32)));  // boards powered together still spread out
-    s_next_request_ms = millis() + kRequestFirstMinMs + random(kRequestFirstSpanMs);
+  anv_node_begin(&s_node, millis());
+  if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
     Serial.println("No node ID saved: asking the hosts for one");
+  } else {
+    Serial.printf("Node ID %u (saved). Type 'forget' to ask for a new one.\n", anv_node_id(&s_node));
   }
-  user_setup();
 }
 
 void loop() {
   const uint32_t now = millis();
+  anv_node_poll(&s_node, now);
 
-  acc_can_frame_t f;
-  while (s_can.receive(s_can.ctx, &f)) {
-    ++s_rx_frames;
-    if (f.id == kRawTextId) {
-      Serial.printf("Received raw text: %.*s\n", f.dlc, reinterpret_cast<const char*>(f.data));
-    } else if (s_mode == Mode::Running) {
-      if (f.id == ROVER_HOST_HB_ORIN_FRAME_ID || f.id == ROVER_HOST_HB_RPI_FRAME_ID || f.id == ROVER_HOST_HB_TOOL_FRAME_ID)
-        s_host_heard = true;
-      if (!ota_on_frame(f, now) && !on_text_frame(f)) anv_node_on_rx_frame(&s_node, &f, now);
-    } else {
-      on_frame_while_waiting(f);
-    }
-  }
-
-  if (s_mode == Mode::Running) {
-    anv_node_tick(&s_node, now);  // heartbeat, command watchdog, bus-off recovery
-    if (anv_rate_sched_due(&s_sensor_sched, now)) send_sensor_frame();
-    ota_tick(now);
-    ota_confirm(now, s_host_heard);
-    if (ota_rolled_back() && s_host_heard && !s_rollback_reported) {
-      s_rollback_reported = send_text(0, "rollbck", 7);  // shows on the screen: the last update failed
-    }
-    (void)anv_node_drain_tx(&s_node);
-  } else {
-    if (bus_off()) s_can.start_recovery(s_can.ctx);
-    if ((int32_t)(now - s_next_request_ms) >= 0) {
-      send_id_request();
-      s_next_request_ms = now + kRequestEveryMs + random(kRequestSpanMs);
-    }
-  }
-
-  const bool off = bus_off();
   if (!user_owns_led()) {
-    led_update(now, off ? LedMode::BusOff : (s_mode == Mode::Running ? LedMode::Running : LedMode::WaitingForId),
-               s_can_ctx.tx_ok_count);
+    LedMode mode;
+    if (!s_can_ok || anv_link_stats(&s_link)->state == ANV_LINK_STATE_BUS_OFF) {
+      mode = LedMode::BusOff;
+    } else if ((int32_t)(now - s_blink_until) < 0) {
+      mode = LedMode::Identify;
+    } else if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
+      mode = LedMode::WaitingForId;
+    } else {
+      mode = LedMode::Running;
+    }
+    led_update(now, mode, s_twai.tx_ok);
   }
-  user_loop(now);
 
   static uint32_t last_diag = 0;
   if (s_diag && now - last_diag >= 1000) {
@@ -409,5 +280,5 @@ void loop() {
     print_status();
   }
   poll_serial();
-  delay(1);
+  delay(1);  // lets the idle task run; nothing in the node runtime waits
 }

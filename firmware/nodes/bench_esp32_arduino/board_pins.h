@@ -11,7 +11,6 @@
 #define BENCH_CAN_RX_GPIO 15
 #define BENCH_LED_GPIO 48
 #define BENCH_LED_IS_RGB 1
-#define BENCH_HW_TARGET 1u /* NODE_ID_REQUEST HW_TARGET: ESP32-S3 */
 #elif defined(CONFIG_IDF_TARGET_ESP32)
 /* WROOM DevKit: plain LED on GPIO 2. GPIO 16/17 are the PSRAM pins on WROVER modules and GPIO 15
  * is a boot strapping pin, so the CAN pins stay clear of them. TX 4 / RX 5 is how the bench WROOMs are
@@ -20,7 +19,6 @@
 #define BENCH_CAN_RX_GPIO 5
 #define BENCH_LED_GPIO 2
 #define BENCH_LED_IS_RGB 0
-#define BENCH_HW_TARGET 0u /* NODE_ID_REQUEST HW_TARGET: ESP32 */
 #else
 #error "bench_esp32_arduino supports the ESP32 (WROOM) and the ESP32-S3"
 #endif
