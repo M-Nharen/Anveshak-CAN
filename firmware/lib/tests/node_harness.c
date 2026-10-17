@@ -14,9 +14,81 @@ static anv_node_config_t cfgs[H_MAX_NODES];
 static bool started[H_MAX_NODES];
 static uint8_t txn;
 
+static anv_isotp_t h_transfer;
+static uint8_t h_transfer_rx_buf[H_TRANSFER_RX_CAP];
+static bool h_transfer_tx_done;
+static anv_isotp_result_t h_transfer_tx_result;
+h_transfer_rx_t h_transfer_last_rx;
+
 static h_app_t *app(void *user)
 {
     return (h_app_t *)user;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* a fake OTA backend, one per node slot (h_node_t::ota)                                      */
+
+static bool ota_begin(void *ctx, uint32_t image_len)
+{
+    h_ota_t *o = (h_ota_t *)ctx;
+    if (o->capacity != 0u && image_len > o->capacity) {
+        return false;
+    }
+    o->active = true;
+    o->written = 0;
+    return true;
+}
+
+static bool ota_write(void *ctx, const uint8_t *data, uint16_t len)
+{
+    (void)data;
+    h_ota_t *o = (h_ota_t *)ctx;
+    if (!o->active || o->fail_writes) {
+        return false;
+    }
+    o->written += len;
+    return true;
+}
+
+static bool ota_commit(void *ctx)
+{
+    h_ota_t *o = (h_ota_t *)ctx;
+    if (!o->active) {
+        return false;
+    }
+    o->active = false;
+    o->active_version = (uint8_t)(1u - o->active_version);
+    o->commits++;
+    return true;
+}
+
+static void ota_abort(void *ctx)
+{
+    h_ota_t *o = (h_ota_t *)ctx;
+    o->active = false;
+    o->aborts++;
+}
+
+static void ota_confirm(void *ctx)
+{
+    ((h_ota_t *)ctx)->confirms++;
+}
+
+static void ota_rollback_and_reboot(void *ctx)
+{
+    /* A real backend never returns from this; the fake one does, so the test can see it ran. */
+    h_ota_t *o = (h_ota_t *)ctx;
+    o->active_version = (uint8_t)(1u - o->active_version);
+    o->rollbacks++;
+}
+
+static const anv_node_ota_backend_t h_ota_backend = {
+    ota_begin, ota_write, ota_commit, ota_abort, ota_confirm, ota_rollback_and_reboot,
+};
+
+const anv_node_ota_backend_t *h_ota_ops(void)
+{
+    return &h_ota_backend;
 }
 
 static void outputs_off(anv_node_t *n, void *u)
@@ -103,12 +175,14 @@ void h_reset(void)
     memset(started, 0, sizeof started);
     h_now = 1000;
     h_log_n = 0;
+    memset(&h_transfer_last_rx, 0, sizeof h_transfer_last_rx);
     anv_loopback_bus_init(&h_bus);
     anv_loopback_attach(&h_bus, &host_port);
     anv_link_init(&host_link, anv_loopback_ops(), &host_port);
     anv_link_config_t lc;
     anv_link_config_default(&lc);
     anv_link_start(&host_link, &lc);
+    h_transfer_bind(ANV_NODE_BROADCAST);
     for (int i = 0; i < H_MAX_NODES; i++) {
         h_node_t *h = &h_nodes[i];
         anv_loopback_attach(&h_bus, &h->port);
@@ -129,6 +203,8 @@ anv_node_config_t *h_config(int i, const anv_type_desc_t *type)
     memcpy(c->mac, mac, 6);
     c->storage = anv_node_memstore_ops();
     c->storage_ctx = &h->store;
+    c->ota = h_ota_ops();
+    c->ota_ctx = &h->ota;
     c->user = &h->app;
     c->outputs_off = outputs_off;
     c->setup = setup;
@@ -164,6 +240,9 @@ static void poll_host(void)
         if (h_log_n < H_LOG) {
             h_log[h_log_n++] = f;
         }
+        if (anv_id_port(f.id) == ANV_TRANSFER_PORT) {
+            (void)anv_isotp_on_frame(&h_transfer, &f, h_now * 1000u);
+        }
     }
 }
 
@@ -177,7 +256,55 @@ void h_step(uint32_t ms)
             }
         }
         poll_host();
+        anv_isotp_poll(&h_transfer, h_now * 1000u);
     }
+}
+
+static bool h_transfer_send_frame(void *user, const anv_link_frame_t *frame)
+{
+    (void)user;
+    anv_link_frame_t f = *frame;
+    return anv_link_send(&host_link, &f) == ANV_LINK_OK;
+}
+
+static void h_transfer_on_rx(void *user, const uint8_t *data, uint16_t len)
+{
+    (void)user;
+    h_transfer_last_rx.peer = h_transfer.cfg.peer;
+    h_transfer_last_rx.len = len > H_TRANSFER_RX_CAP ? H_TRANSFER_RX_CAP : len;
+    memcpy(h_transfer_last_rx.data, data, h_transfer_last_rx.len);
+    h_transfer_last_rx.got = true;
+}
+
+static void h_transfer_on_tx_done(void *user, anv_isotp_result_t r)
+{
+    (void)user;
+    h_transfer_tx_done = true;
+    h_transfer_tx_result = r;
+}
+
+void h_transfer_bind(anv_node_id_t peer)
+{
+    anv_isotp_config_t c;
+    anv_isotp_config_default(&c);
+    c.self = H_HOST_ID;
+    c.peer = peer;
+    c.rx_buf = h_transfer_rx_buf;
+    c.rx_buf_size = (uint16_t)sizeof h_transfer_rx_buf;
+    c.send = h_transfer_send_frame;
+    c.on_rx = h_transfer_on_rx;
+    c.on_tx_done = h_transfer_on_tx_done;
+    (void)anv_isotp_init(&h_transfer, &c);
+}
+
+anv_isotp_result_t h_transfer_send(const uint8_t *data, uint16_t len)
+{
+    h_transfer_tx_done = false;
+    (void)anv_isotp_send(&h_transfer, data, len, h_now * 1000u);
+    for (int t = 0; t < 2000 && !h_transfer_tx_done; t++) {
+        h_step(1);
+    }
+    return h_transfer_tx_done ? h_transfer_tx_result : ANV_ISOTP_ERR_TIMEOUT_FC;
 }
 
 void h_send(uint8_t priority, anv_node_id_t dst, uint16_t port, const uint8_t *data, uint8_t len)

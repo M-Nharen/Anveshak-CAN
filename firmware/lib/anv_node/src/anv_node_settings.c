@@ -1,6 +1,7 @@
 /* anv_node settings, stream rates, saving, and the SERVICE port. */
 #include <string.h>
 
+#include "anv_node_diag.h"
 #include "anv_node_internal.h"
 
 /* Saved settings: a header, the label, then (kind, index, value) entries. Entries are matched by
@@ -170,7 +171,9 @@ void anv_node_i_load_saved(anv_node_t *n)
     const uint16_t count = get_u16(buf + 4);
     if (get_u32(buf) != SAVE_MAGIC || size != SAVE_HEADER + ANV_NODE_LABEL_LEN + (size_t)count * SAVE_ENTRY ||
         get_u32(buf + 8) != crc32(buf + SAVE_HEADER, size - SAVE_HEADER)) {
-        return; /* corrupt: keep the defaults (the params_corrupt event comes with L5) */
+        /* Corrupt: keep the defaults. Reported from anv_node_begin(), once sending is safe. */
+        n->params_corrupt = true;
+        return;
     }
     memcpy(n->label, buf + SAVE_HEADER, ANV_NODE_LABEL_LEN);
     const uint8_t *e = buf + SAVE_HEADER + ANV_NODE_LABEL_LEN;
@@ -228,6 +231,7 @@ uint8_t anv_node_save(anv_node_t *n)
     put_u16(buf + 6, 0);
     put_u32(buf + 8, crc32(buf + SAVE_HEADER, size - SAVE_HEADER));
     if (!st->save(n->cfg.storage_ctx, SAVE_KEY_PARAMS, buf, size)) {
+        anv_node_event(n, ANV_EVENT_STORAGE_WRITE_FAIL, 0);
         return ANV_SERVICE_STATUS_STORAGE_ERROR;
     }
     n->unsaved = false;

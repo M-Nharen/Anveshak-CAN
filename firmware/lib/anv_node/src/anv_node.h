@@ -25,7 +25,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "anv_isotp.h"
 #include "anv_link.h"
+#include "anv_node_diag.h"
+#include "anv_node_ota.h"
 #include "anv_proto.h"
 
 #ifdef __cplusplus
@@ -84,6 +87,10 @@ typedef struct {
     /* Keep an assigned ID across reboots (saved like a fixed ID). Off: ask again every boot;
      * the hosts' allocator remembers the MAC, so the answer is normally the same. */
     bool save_assigned_id;
+
+    /* Flash access for firmware updates (anv_node_ota.h). NULL: OTA is refused (NO_BACKEND). */
+    const anv_node_ota_backend_t *ota;
+    void *ota_ctx;
 
     /* --- application hooks; all optional except outputs_off. `user` is passed back. --- */
     void *user;
@@ -158,6 +165,7 @@ struct anv_node_s {
     anv_value_t values[ANV_NODE_MAX_PARAMS];
     uint16_t n_params;
     bool unsaved;
+    bool params_corrupt; /* set by anv_node_i_load_saved(); reported in anv_node_begin() */
     char label[ANV_NODE_LABEL_LEN];
 
     anv_node_stream_t streams[ANV_NODE_MAX_STREAMS];
@@ -179,6 +187,14 @@ struct anv_node_s {
     uint32_t debug_until_ms;
     uint32_t rng;
     bool begun;
+
+    /* OTA and the log transfer share this one ISO-TP channel on the `transfer` port; at most
+     * one peer talks to it at a time (anv_node.c rebinds it to a new peer's first frame once
+     * it's idle). */
+    anv_isotp_t transfer;
+    uint8_t transfer_rx_buf[ANV_NODE_OTA_MAX_CHUNK + 16u];
+    anv_node_ota_t ota;
+    anv_node_diag_t diag;
 };
 
 /* Fill a config with defaults: no hooks, ask for an ID, don't keep it. */

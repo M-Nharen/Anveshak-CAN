@@ -4,6 +4,7 @@ import io
 import os
 import shutil
 import subprocess
+import threading
 
 import pytest
 from conftest import FakeNode, eventually
@@ -69,6 +70,25 @@ def test_arm_needs_lead_and_estop(schema):
     assert code == 0 and eventually(lambda: n.estop)
     code, _ = run(bus, "estop", "x", "--release", "--take-lead")
     assert code == 0 and eventually(lambda: not n.estop)
+    n.stop()
+
+
+def test_debug_level(schema):
+    bus = anv_can.TestBus()
+    n = FakeNode(bus, schema, "motor_controller", 21)
+    code, out = run(bus, "debug", "x", "21", "2", "--take-lead", "--timeout", "30")
+    assert code == 0 and "debug level 2" in out and "for 30" in out
+    assert eventually(lambda: n.debug_level == 2 and n.debug_sets == 1)
+    n.stop()
+
+
+def test_events(schema):
+    bus = anv_can.TestBus()
+    n = FakeNode(bus, schema, "motor_controller", 21)
+    threading.Timer(0.1, n.send_event, kwargs={"code": 0x0101, "detail": 7, "severity": 1}).start()
+    code, out = run(bus, "events", "x", "--duration", "0.5")
+    assert code == 0 and "watching for events" in out
+    assert "node  21  warning  can_error_passive  detail=7" in out
     n.stop()
 
 

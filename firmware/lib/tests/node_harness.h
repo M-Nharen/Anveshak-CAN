@@ -4,12 +4,14 @@
 #ifndef NODE_HARNESS_H
 #define NODE_HARNESS_H
 
+#include "anv_isotp.h"
 #include "anv_link_loopback.h"
 #include "anv_node.h"
 
 #define H_MAX_NODES 3
 #define H_LOG 512
 #define H_HOST_ID 1 /* the fake host's node ID (hosts get IDs from config) */
+#define H_TRANSFER_RX_CAP 4096
 
 /* What a node's application hooks saw. */
 typedef struct {
@@ -31,12 +33,26 @@ typedef struct {
     int streams_filled;
 } h_app_t;
 
+/* A fake OTA backend: no real flash, just two "slots" (0 and 1) tracked as a version number,
+ * so tests can check a transfer landed, a bad one didn't, and a boot-time rollback works. */
+typedef struct {
+    uint32_t capacity;  /* begin() fails above this many bytes; 0 = no limit (set before h_start) */
+    bool fail_writes;   /* test hook: write() always fails */
+    bool active;        /* a begin() happened and hasn't committed or aborted yet */
+    uint32_t written;
+    uint8_t active_version; /* flips on commit(); flips back on rollback_and_reboot() */
+    int commits, aborts, confirms, rollbacks;
+} h_ota_t;
+
+const anv_node_ota_backend_t *h_ota_ops(void);
+
 typedef struct {
     anv_loopback_port_t port;
     anv_link_t link;
     anv_node_t node;
     anv_node_memstore_t store;
     h_app_t app;
+    h_ota_t ota;
 } h_node_t;
 
 extern anv_loopback_bus_t h_bus;
@@ -66,5 +82,20 @@ void h_step_with_leader(uint32_t ms, uint16_t term);
 int h_count(uint16_t port, anv_node_id_t src);
 const anv_link_frame_t *h_last(uint16_t port, anv_node_id_t src);
 void h_clear_log(void);
+
+/* ISO-TP from the fake host (H_HOST_ID), for OTA and the log transfer. One channel: bind it to
+ * whichever node you're about to talk to. */
+typedef struct {
+    anv_node_id_t peer;
+    uint16_t len;
+    uint8_t data[H_TRANSFER_RX_CAP];
+    bool got;
+} h_transfer_rx_t;
+extern h_transfer_rx_t h_transfer_last_rx; /* the latest full transfer received from a node */
+
+void h_transfer_bind(anv_node_id_t peer);
+/* Drives the send over repeated h_step(1) calls (up to ~2 s); the result anv_isotp_send() would
+ * have reported through on_tx_done. */
+anv_isotp_result_t h_transfer_send(const uint8_t *data, uint16_t len);
 
 #endif /* NODE_HARNESS_H */

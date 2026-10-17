@@ -2,7 +2,8 @@
  *
  * Put experiments here (blink an LED, read a sensor). anv_node calls user_setup() once it has
  * loaded its settings and user_loop() on every pass, so the board stays a live node on the bus
- * while your code runs. (Flashing over CAN comes back with the v2 update service, L5.)
+ * while your code runs. Flashing over CAN (anv-flash) and diagnostics (events, the black box,
+ * debug levels) are wired into anv_node itself; nothing here needs to touch them.
  *
  * Rule: never block. No delay(), no long loops: use the millis() value passed in. A blocked loop
  * stops heartbeats and CAN replies. */

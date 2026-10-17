@@ -350,12 +350,28 @@ TEST(estop_from_anyone) {
   CHECK(!a.estop_latched());
 }
 
+TEST(debug_level_leader_only) {
+  TestBus bus;
+  auto l1 = bus.connect(), l2 = bus.connect();
+  Host a(*l1, host_schema(), config(1)), b(*l2, host_schema(), config(2));
+  CHECK(a.start() && b.start());
+  t::FakeNode n(bus, type("motor_controller"), 22);
+  n.start();
+  CHECK(a.wait_for_node(22, 1000));
+
+  CHECK(b.set_debug_level(22, 2) == Status::NotLeader);  // not the leader
+  CHECK(a.request_lead() == Status::Ok && eventually([&] { return n.leader == 1; }));
+  CHECK(a.set_debug_level(22, 2) == Status::Ok);
+  CHECK(eventually([&] { return n.debug_level == 2 && n.debug_sets == 1; }));
+}
+
 TEST(not_running) {
   TestBus bus;
   auto link = bus.connect();
   Host h(*link, host_schema(), config(1));
   CHECK(h.get(1, "x").status == Status::NotRunning);
   CHECK(h.request_lead() == Status::NotRunning);
+  CHECK(h.set_debug_level(1, 2) == Status::NotRunning);
   HostConfig bad = config(0);
   Host b(*link, host_schema(), bad);
   std::string err;

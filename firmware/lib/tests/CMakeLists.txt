@@ -9,6 +9,8 @@ set(ANV_NODE_TESTS
   test_node_id
   test_node_settings
   test_node_safety
+  test_ota
+  test_diag
 )
 
 foreach(test_name ${ANV_LIB_TESTS})

@@ -330,5 +330,9 @@ void bind_host(py::module_& m) {
       .def("estop", [](Host& h, uint8_t reason) { check(h.estop(reason)); }, py::arg("reason") = 0,
            py::call_guard<py::gil_scoped_release>())
       .def("estop_release", [](Host& h) { check(h.estop_release()); }, py::call_guard<py::gil_scoped_release>())
-      .def_property_readonly("estop_latched", &Host::estop_latched);
+      .def_property_readonly("estop_latched", &Host::estop_latched)
+      .def("set_debug_level", [](Host& h, uint8_t node, uint8_t level, uint16_t categories, uint16_t timeout_s) {
+        check(h.set_debug_level(node, level, categories, timeout_s));
+      }, py::arg("node"), py::arg("level"), py::arg("categories") = 0, py::arg("timeout_s") = 0,
+         py::call_guard<py::gil_scoped_release>());
 }

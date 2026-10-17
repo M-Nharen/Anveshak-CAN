@@ -13,6 +13,9 @@
     anv-host estop vcan0                         # anyone, any time
     anv-host estop vcan0 --release --take-lead
     anv-host lead vcan0 2                        # ask host 2 to lead
+    anv-host debug vcan0 20 2 --take-lead         # debug level 2 on node 20
+    anv-host debug vcan0 all 0 --take-lead        # back to off, every node
+    anv-host events vcan0                        # watch error events as they happen
 
 The tool joins the bus as a host with ID --host-id (default $ANV_HOST_ID, else 250). Arming,
 commands and E-stop release need the lead; --take-lead asks for it, which (like any change of
@@ -150,6 +153,11 @@ def _lead(host: Host, a: argparse.Namespace) -> None:
     host.request_lead()
     if not host.wait_for_lead(1000):
         raise HostError("couldn't take the lead")
+    # wait_for_lead() only reflects this host's own election state; give the claim a moment to
+    # actually reach the nodes before sending them anything that depends on it (arm, debug
+    # level, ...). A one-shot send right after taking the lead would otherwise race ahead of
+    # the nodes' own view of who leads and be silently ignored.
+    time.sleep(0.1)
 
 
 def _hold(host: Host, seconds: float) -> None:
@@ -209,6 +217,36 @@ def cmd_estop(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) ->
     else:
         host.estop(a.reason)
         print("E-stop sent", file=out)
+    return 0
+
+
+def cmd_debug(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
+    if a.node:
+        _wait_node(host, a.node, a.wait)
+    _lead(host, a)
+    host.set_debug_level(a.node, a.level, categories=a.categories, timeout_s=a.timeout)
+    until = f" for {a.timeout} s" if a.timeout else " until changed"
+    print(f"debug level {a.level} on {a.node or 'all'}{until}", file=out)
+    return 0
+
+
+def _print_event(e: dict[str, Any], out: TextIO) -> None:
+    cleared = " (cleared)" if e["cleared"] else ""
+    name = e["name"] or f"0x{e['code']:04x}"
+    print(f"node {e['node']:>3}  {e['severity']:<8} {name}{cleared}  detail={e['detail']} "
+          f"uptime={e['uptime_s']}s", file=out, flush=True)
+
+
+def cmd_events(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
+    # set_callbacks() must run before start(): main() has already wired this one in.
+    print(f"watching for events{f' for {a.duration:g} s' if a.duration else ', Ctrl-C to stop'}",
+          file=out, flush=True)
+    end = time.monotonic() + a.duration if a.duration > 0 else None
+    try:
+        while end is None or time.monotonic() < end:
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        pass
     return 0
 
 
@@ -285,6 +323,16 @@ def _parser() -> argparse.ArgumentParser:
                     help="become the leader first (with --release)")
     sp = p("lead", cmd_lead, "ask a host to lead")
     sp.add_argument("host", type=lambda x: int(x, 0))
+    sp = p("debug", cmd_debug, "turn debugging on a node (or all) up or down")
+    sp.add_argument("node", type=_node_arg, help="node ID or 'all'")
+    sp.add_argument("level", type=int, help="0-3")
+    sp.add_argument("--categories", type=lambda x: int(x, 0), default=0,
+                    help="bitmask the node type defines (default: 0, all)")
+    sp.add_argument("--timeout", type=int, default=0, metavar="SECONDS",
+                    help="revert to the saved default after this long (default: until changed)")
+    sp.add_argument("--take-lead", action="store_true", help="become the leader first")
+    sp = p("events", cmd_events, "watch error events from every node as they happen")
+    sp.add_argument("--duration", type=float, default=0, help="seconds (default: until Ctrl-C)")
     return ap
 
 
@@ -304,6 +352,8 @@ def main(argv: list[str] | None = None, open_link: Callable[[str], Link] | None 
         return 2
     # A tool never hands out IDs: that's the job of the hosts with the rover's ID table.
     host = Host(link, schema, host_id=a.host_id, allocator="off", command_hz=a.command_hz)
+    if a.cmd == "events":  # set_callbacks() only works before start()
+        host.set_callbacks(event=lambda e: _print_event(e, out))
     try:
         host.start()
         return a.fn(host, schema, a, out)

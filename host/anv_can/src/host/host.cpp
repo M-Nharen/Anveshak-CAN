@@ -140,6 +140,7 @@ Host::Host(Link& link, std::shared_ptr<const Schema> schema, HostConfig config)
       m_id_assign_(need(*schema_, "id_assign")),
       m_service_(need(*schema_, "service")),
       m_event_(need(*schema_, "event")),
+      m_debug_level_(need(*schema_, "debug_level")),
       election_([&] {
         ElectionConfig e;
         e.host_id = config.host_id;
@@ -165,7 +166,7 @@ bool Host::set_callbacks(HostCallbacks callbacks) {
 bool Host::start(std::string* error) {
   if (running_) return true;
   for (const Message* m : {m_estop_, m_estop_release_, m_sync_, m_nmt_, m_host_hb_, m_lead_req_, m_hb_, m_id_req_,
-                           m_id_assign_, m_service_, m_event_}) {
+                           m_id_assign_, m_service_, m_event_, m_debug_level_}) {
     // A schema without these isn't the v2 protocol; nothing sensible can run on it.
     if (m == nullptr) {
       if (error) *error = "the schema's protocol is missing a message anv_host needs";
@@ -904,6 +905,18 @@ Status Host::estop_release() {
   v["term"] = one(u(election_.term()));
   if (!send_msg(*m_estop_release_, v, schema_->node_ids.broadcast)) return Status::SendFailed;
   estop_latched_ = false;
+  return Status::Ok;
+}
+
+Status Host::set_debug_level(uint8_t node, uint8_t level, uint16_t categories, uint16_t timeout_s) {
+  if (!running_) return Status::NotRunning;
+  std::lock_guard<std::mutex> lk(mu_);
+  if (!election_.leading()) return Status::NotLeader;
+  Values v;
+  v["level"] = one(u(level));
+  v["categories"] = one(u(categories));
+  v["timeout_s"] = one(u(timeout_s));
+  if (!send_msg(*m_debug_level_, v, node)) return Status::SendFailed;
   return Status::Ok;
 }
 
