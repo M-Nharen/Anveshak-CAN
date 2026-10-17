@@ -1,19 +1,32 @@
 # Bench node sketch (ESP32 WROOM + ESP32-S3, Arduino)
 
-One sketch for every ESP32 on the bench. Each board gets its node ID from the RPi automatically, so
-you flash the same file everywhere. Once addressed, it is a normal rover node: heartbeat at 10 Hz, a
-4-value sensor frame at 10 Hz, and E-stop, NMT and leader tracking from the shared
-`anveshak_can_core` (`firmware/core`).
+One sketch for every ESP32 on the bench, built on the v2 libraries: `anv_link` (TWAI, 29-bit IDs),
+`anv_proto` and `anv_node` (`firmware/lib`). Each board gets its node ID from a host automatically,
+so you flash the same file everywhere. It is node type `esp32_bench`
+(`schema/types/esp32_bench.yaml`): a `status` stream with four numbers about the board and a
+`blink` action. Heartbeat, settings, stream rates, arm/disarm, E-stop and leader tracking all come
+from `anv_node`.
+
+This replaces the 11-bit sketch built on `firmware/core`: the board now speaks only the v2 protocol,
+so it shows up in the v2 host tools (L4), not the old dashboard. The old sketch is on `main`.
 
 ## Flashing (Arduino IDE 2)
 
-1. Install the **esp32 by Espressif** board package, version **3.3.0 or newer**. The sketch uses the
-   `esp_twai` driver that arrived with it.
-2. Open `bench_esp32_arduino.ino` and pick **ESP32 Dev Module** (WROOM) or **ESP32S3 Dev Module**.
-   Keep the default partition scheme, because phase 2 (flashing over CAN) uses its two OTA slots.
-3. Upload, then open the Serial Monitor at 115200 baud.
+1. Install the **esp32 by Espressif** board package, version **3.3.0 or newer** (the `esp_twai`
+   driver arrived with it).
+2. Make the three libraries visible: copy or symlink `firmware/lib/anv_link`, `firmware/lib/anv_proto`
+   and `firmware/lib/anv_node` into your Arduino `libraries` folder. Keep them inside the repository
+   checkout (symlinks are best): they compile the generated schema code from `schema/generated/c`.
+3. Open `bench_esp32_arduino.ino`, pick **ESP32 Dev Module** (WROOM) or **ESP32S3 Dev Module**, and
+   upload. Open the Serial Monitor at 115200 baud.
 
-Command line: `arduino-cli compile --fqbn esp32:esp32:esp32s3 firmware/nodes/bench_esp32_arduino`.
+Command line:
+
+```sh
+arduino-cli compile --fqbn esp32:esp32:esp32s3 \
+  --library firmware/lib/anv_link --library firmware/lib/anv_proto --library firmware/lib/anv_node \
+  firmware/nodes/bench_esp32_arduino
+```
 
 ## Wiring (`board_pins.h`)
 
@@ -22,97 +35,61 @@ Command line: `arduino-cli compile --fqbn esp32:esp32:esp32s3 firmware/nodes/ben
 | ESP32-S3 DevKitC | GPIO 16 | GPIO 15 | RGB on GPIO 48 (38 on some revisions) |
 | WROOM DevKit | GPIO 4 | GPIO 5 | GPIO 2 |
 
-Wire ESP TX to the transceiver's TXD and ESP RX to its RXD; crossing them is the classic mistake. The TCAN's STB is tied to GND. If a board
-drives it from a GPIO instead, set `BENCH_TCAN_STB_GPIO`.
+Wire ESP TX to the transceiver's TXD and ESP RX to its RXD; crossing them is the classic mistake.
+The TCAN's STB is tied to GND. If a board drives it from a GPIO instead, set `BENCH_TCAN_STB_GPIO`.
 
 ## What the LED means
 
 | WROOM (single LED) | S3 (RGB) | Meaning |
 | --- | --- | --- |
-| Fast blink | Blue blink | No node ID yet; asking the RPi |
+| Fast blink | Blue blink | No node ID yet; asking the hosts |
 | Flicker | Green flicker | Running; one flash per frame the bus ACKed |
-| Solid on | Red | Bus-off (no ACK, short, wrong bitrate); recovering |
-
-If a board blinks blue forever, it isn't hearing an answer. Check that the gateway is running on
-the RPi (`candump can0` should show `5FB` frames from the board) and check the wiring and termination.
+| Slow blink | White blink | Identify (NMT identify, or the `blink` action) |
+| Solid on | Red | Bus-off (no ACK, short, wrong bitrate) or TWAI failed to start |
 
 ## Serial console
 
 | Command | What it does |
 | --- | --- |
-| `diag` | Toggle the once-a-second status line (TWAI state, TEC/REC, bus errors, counts) |
+| `diag` | Toggle the once-a-second status line (node state, leader, TWAI state, TEC/REC, counts) |
 | `status` | Print the status line once |
-| `id` | MAC, node ID and build ID |
-| `forget` | Erase the saved node ID and restart, so the board asks for a new one |
-| `msg <text>` | Send up to 7 characters to the RPi; they show up in the touch screen's Messages view |
-| `raw <text>` | Send up to 8 characters on ID 0x7FF. Other bench boards print it, as the old test sketch did |
+| `id` | MAC, node ID, type and build ID |
+| `setid <n>` | Save `n` (1–254) as this board's fixed ID and use it now |
+| `forget` | Erase the saved node ID and ask the hosts for a new one |
+| `msg <text>` | Send up to 7 characters to everyone as a protocol `text` frame |
+| `estop` | Send E-stop: every node latches it until the leader releases it |
 
-## Messages from the screen
-
-The touch screen's **Messages** view sends up to 7 characters to one board or to all of them. The board
-prints `Message from RPi: <text>` here and echoes the text back, and the screen ticks the message as
-received by that node. Text from `msg <text>` goes the other way.
+Text frames from a host (`text`, port 14) addressed to this board or to everyone are printed and
+echoed back to the sender with the same `seq`.
 
 ## How IDs are assigned
 
-The board sends `NODE_ID_REQUEST` (0x5FB) with its MAC every ~0.5 s, with random jitter. The
-gateway answers with an ID from 16–19, then 22–30, and remembers the MAC in its node ID table, so the
-board always gets the same ID back. The board saves the ID in flash (NVS) and restarts as that node.
-Details: `docs/architecture.md`, "Automatic node IDs".
+The board sends `id_request` (port 8, from ID 255) with its MAC and type every 0.4–0.6 s, with
+random jitter, until a host's allocator answers with `id_assign` for that MAC. The board keeps the
+ID in NVS (`save_assigned_id`), so it comes back with the same ID after a reset; `forget`, or NMT
+`forget_id` from the leader, makes it ask again.
 
-To give a board a new ID: run `forget` on the board, and free the old ID on the RPi by long-pressing
-its tile on the screen, or with the bridge command `forget_node`.
+## The `status` stream
 
-## The four sensor values
+`chip_temp` (0.01 °C), `free_heap` (KiB), `rx_frames` and `tx_frames` (low 16 bits), at 10 Hz by
+default. A host can change the rate at run time (SERVICE `set_rate`, 0–50 Hz) and save it with
+SAVE. Replace `hook_fill_stream()` with real sensor reads on a science board.
 
-1. Chip temperature in 0.01 °C
-2. Free heap in KiB
-3. Frames received (low 16 bits)
-4. Frames sent and ACKed (low 16 bits)
+## `src/schema/` is a copy
 
-Replace `send_sensor_frame()` with real sensor reads on a science board.
-
-## `src/anv/` is a copy
-
-The Arduino IDE only compiles files inside the sketch folder, so `src/anv/` holds a copy of
-`firmware/core` and the generated CAN code. Don't edit it. After changing `firmware/core` or
-regenerating `defs/`, run `./sync_core.sh`. CI fails if the copy is stale.
+The Arduino IDE only compiles files inside the sketch folder, so `src/schema/` holds a copy of this
+type's generated code (`anv_esp32_bench.c/.h` and the headers it includes). Don't edit it. After
+`anv-schema gen`, run `./sync_schema.sh`. CI fails if the copy is stale.
 
 ## Your own code: `user_app.cpp`
 
-Put experiments in `user_app.cpp` (`user_setup()` once, `user_loop(now_ms)` every loop). They run
-alongside the CAN node, so the board stays on the screen and can still be flashed over CAN. Don't
-flash a separate plain sketch over CAN: it has no CAN code, so the board would drop off the bus and
-need USB again.
+Put experiments in `user_app.cpp` (`user_setup()` once, `user_loop(now_ms)` every loop). `anv_node`
+calls them from its `setup` and `loop` hooks, so the board stays a live node while they run.
 
-The file ships with a 5 s on / 5 s off LED blink: set `USER_BLINK_DEMO` to 1, export, and flash. Never
-use `delay()` there; use `now_ms`, because a blocked loop stops the board's CAN traffic.
-
-## Flashing over CAN
-
-Once a board runs this sketch (the first time, flash it over USB), you can update it over CAN, one
-board at a time, each with its own image:
-
-1. **Arduino IDE:** pick the board type, then **Sketch → Export Compiled Binary**. In the sketch
-   folder that creates `build/esp32.esp32.esp32/bench_esp32_arduino.ino.bin` (WROOM) or
-   `build/esp32.esp32.esp32s3/...` (S3). Use the **`.ino.bin`**, not the `.ino.merged.bin`.
-2. **Touch screen or browser:** tap **Flash…** on the node's tile, pick the file, and tap **Flash**.
-   Or, on the Pi: `anv-flash flash --node 16 bench_esp32_arduino.ino.bin`.
-3. It takes about 30–60 s. The node restarts into the new image, and the tool checks that its
-   heartbeat shows the new build ID (the `build` printed at boot and by `id`).
-
-Safety rules:
-
-- **Wrong chip:** a WROOM image is refused on an S3 and the other way round.
-- **Armed nodes:** a node that is armed is never flashed.
-- **Interrupted transfer:** the board keeps its old image.
-- **New image proves itself:** it must run for 5 s and hear the RPi. If it crashes or hangs before
-  that, the ESP32 boots the old image again by itself, and the node sends "rollbck" to the screen.
-
-The serial console prints each step (`Update: receiving ...`, `Update: now running the new image ...`).
+The file ships with a 5 s on / 5 s off LED blink: set `USER_BLINK_DEMO` to 1 and flash. Never use
+`delay()` there; use `now_ms`, because a blocked loop stops the board's CAN traffic.
 
 ## Not done yet
 
-- No hardware acceptance filters; software filtering is enough at bench traffic levels. See the
-  note in `twai_arduino_driver.c` before using these boards on the full rover.
-- Flashing over CAN comes in phase 2.
+- Flashing over CAN and error events come with the v2 update and diagnostics work (L5). Until then,
+  flash over USB.

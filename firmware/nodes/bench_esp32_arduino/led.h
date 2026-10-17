@@ -1,11 +1,12 @@
 /* Status LED: a short flash for every frame the bus ACKed, fast blink while waiting for a node ID,
- * solid while bus-off. On the S3's RGB LED: green = sent, blue = waiting for an ID, red = bus-off. */
+ * solid while bus-off, slow even blink while identifying (NMT identify or the `blink` action).
+ * On the S3's RGB LED: green = sent, blue = waiting for an ID, red = bus-off, white = identify. */
 #ifndef BENCH_LED_H
 #define BENCH_LED_H
 
 #include <stdint.h>
 
-enum class LedMode : uint8_t { WaitingForId, Running, BusOff };
+enum class LedMode : uint8_t { WaitingForId, Running, BusOff, Identify };
 
 void led_init();
 // Call every loop iteration. tx_ok_count is the driver's running count of ACKed frames.

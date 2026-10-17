@@ -1,0 +1,9 @@
+{
+  "name": "anv_node",
+  "version": "0.1.0",
+  "description": "Anveshak rover node runtime: settings, streams, commands with watchdogs, ID assignment, arming, E-stop and leader tracking from the generated schema.",
+  "repository": {"type": "git", "url": "https://github.com/M-Nharen/Anveshak-CAN"},
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "build": {"srcDir": "src", "includeDir": "src"}
+}
