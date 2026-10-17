@@ -22,6 +22,7 @@ endif()
 
 add_subdirectory(core)
 add_subdirectory(drivers/loopback)
+add_subdirectory(lib)
 
 
 if(NOT CMAKE_CROSSCOMPILING)

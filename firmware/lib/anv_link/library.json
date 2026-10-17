@@ -1,0 +1,9 @@
+{
+  "name": "anv_link",
+  "version": "0.1.0",
+  "description": "CAN link layer for the Anveshak rover: ESP32 TWAI with 29-bit IDs, filters, counters, bus-off recovery.",
+  "repository": {"type": "git", "url": "https://github.com/M-Nharen/Anveshak-CAN"},
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "build": {"srcDir": "src", "includeDir": "src"}
+}

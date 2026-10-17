@@ -1,0 +1,6 @@
+idf/build/
+idf/sdkconfig
+idf/sdkconfig.old
+idf/dependencies.lock
+idf/managed_components/
+platformio/.pio/
