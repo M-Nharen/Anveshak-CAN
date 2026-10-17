@@ -40,13 +40,10 @@ std::unique_ptr<SocketCanBus> SocketCanBus::open(const std::string& interface_na
     return std::unique_ptr<SocketCanBus>();
   };
 
-  // Kernel-level filters: the gateway consumes network, feedback, telemetry, sensor and heartbeat
-  // traffic. Commands (class 1), service (5) and bootloader (7) frames never wake it.
-  can_filter filters[5];
-  const canid_t classes[5] = {0x000, 0x200, 0x300, 0x400, 0x600};
-  for (int i = 0; i < 5; ++i) {
-    filters[i].can_id = classes[i];
-    filters[i].can_mask = CAN_SFF_MASK & 0x700;
+  can_filter filters[kGatewayRxFilters.size()];
+  for (size_t i = 0; i < kGatewayRxFilters.size(); ++i) {
+    filters[i].can_id = kGatewayRxFilters[i].id;
+    filters[i].can_mask = CAN_SFF_MASK & kGatewayRxFilters[i].mask;
   }
   if (setsockopt(fd, SOL_CAN_RAW, CAN_RAW_FILTER, filters, sizeof filters) < 0) return fail("CAN_RAW_FILTER");
 

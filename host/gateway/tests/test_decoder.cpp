@@ -361,4 +361,24 @@ TEST(fake_bus_delivers_to_other_ports_only) {
   CHECK_EQ(hub.frames_sent(), 1u);
 }
 
+#ifdef __linux__
+#include "anv_gateway/socketcan_bus.hpp"
+
+TEST(the_kernel_filters_let_through_every_frame_the_gateway_acts_on) {
+  auto passes = [](uint16_t id) {
+    for (const IdFilter& f : kGatewayRxFilters)
+      if (f.accepts(id)) return true;
+    return false;
+  };
+  // Allocation (a lone RPi saw the boards' 0x5FB in candump but the socket never got them).
+  CHECK(passes(0x5FB));
+  CHECK(passes(0x5F8) && passes(0x5F9) && passes(0x5FA));
+  CHECK(passes(0x000) && passes(0x010) && passes(0x011));  // E-stop, host heartbeats, lead requests
+  CHECK(passes(0x680) && passes(0x480) && passes(0x220) && passes(0x320));
+  CHECK(!passes(0x120));  // commands
+  CHECK(!passes(0x524));  // ordinary service traffic
+  CHECK(!passes(0x721));  // bootloader
+}
+#endif
+
 int main() { return t::run_all(); }
