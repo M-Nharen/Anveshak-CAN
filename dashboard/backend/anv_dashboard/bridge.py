@@ -54,7 +54,7 @@ class _Line:
                 if not line:
                     raise ConnectionError("gateway closed the connection")
                 reply = json.loads(line)
-            except (OSError, ConnectionError, asyncio.TimeoutError, ValueError) as exc:
+            except (TimeoutError, OSError, ConnectionError, ValueError) as exc:
                 await self._drop()
                 raise BridgeError(f"gateway unreachable: {exc}") from exc
             if not isinstance(reply, dict):
