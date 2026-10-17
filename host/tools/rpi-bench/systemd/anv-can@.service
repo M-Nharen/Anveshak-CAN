@@ -1,0 +1,18 @@
+# Brings a CAN interface up at 500 kbps, 80 % sample point, with automatic bus-off restart after
+# 100 ms. Instance = interface name: anv-can@can1.service brings up can1.
+[Unit]
+Description=Anveshak CAN interface %i (500 kbps)
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/ip link set %i down
+ExecStart=/usr/sbin/ip link set %i type can bitrate 500000 sample-point 0.8 restart-ms 100
+ExecStart=/usr/sbin/ip link set %i txqueuelen 1000
+ExecStart=/usr/sbin/ip link set %i up
+ExecStop=/usr/sbin/ip link set %i down
+
+[Install]
+WantedBy=multi-user.target

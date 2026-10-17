@@ -1,6 +1,7 @@
-# Bench setup: one RPi (Waveshare 2-CH CAN HAT, can0) and auto-addressed ESP32 nodes.
+# Bench setup: one RPi (Waveshare 2-CH CAN HAT) and auto-addressed ESP32 nodes. The bench bus is on
+# the interface Linux names can1; install.sh --iface rewrites this line.
 # See host/tools/rpi-bench/README.md.
-interface: can0
+interface: can1
 host_id: 2          # RPi
 tie_break: 2
 auto_takeover: false

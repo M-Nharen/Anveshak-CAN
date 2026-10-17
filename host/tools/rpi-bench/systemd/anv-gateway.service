@@ -1,8 +1,8 @@
-# The CAN gateway. @USER@ and @PREFIX@ are filled in by install.sh.
+# The CAN gateway. @USER@, @PREFIX@ and @IFACE@ are filled in by install.sh.
 [Unit]
 Description=Anveshak CAN gateway
-Requires=anv-can0.service
-After=anv-can0.service
+Requires=anv-can@@IFACE@.service
+After=anv-can@@IFACE@.service
 
 [Service]
 User=@USER@

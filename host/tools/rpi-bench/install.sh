@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Sets up a Raspberry Pi (Pi OS Bookworm desktop, Waveshare 2-CH CAN HAT, 7" HDMI touch screen) as
-# the bench host: CAN overlays, can0 at 500 kbps, the gateway, the dashboard, and the Bench page
-# full-screen on the display at login. Safe to run again after a `git pull` (rebuilds and restarts).
+# the bench host: CAN overlays, the CAN interface at 500 kbps, the gateway, the dashboard, and the
+# Bench page full-screen on the display at login. Safe to run again after a `git pull` (rebuilds and
+# restarts).
 #
-#   sudo host/tools/rpi-bench/install.sh                 everything
+#   sudo host/tools/rpi-bench/install.sh                 everything, on can1
+#   sudo host/tools/rpi-bench/install.sh --iface can0    use the HAT's other channel
 #   sudo host/tools/rpi-bench/install.sh --no-overlays   leave /boot/firmware/config.txt alone
 set -euo pipefail
 
@@ -13,11 +15,16 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 edit_overlays=1
-for arg in "$@"; do
-  case "$arg" in
+# On this bench the bus is wired to the interface Linux calls can1 (the overlay order makes the
+# names differ from the HAT's printed labels).
+iface=can1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --no-overlays) edit_overlays=0 ;;
-    *) echo "unknown option $arg" >&2; exit 2 ;;
+    --iface) iface="${2:?--iface needs a name, e.g. can1}"; shift ;;
+    *) echo "unknown option $1" >&2; exit 2 ;;
   esac
+  shift
 done
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,6 +81,8 @@ if [[ ! -f /etc/anveshak/gateway.yaml ]]; then
 else
   echo "kept existing /etc/anveshak/gateway.yaml"
 fi
+sed -i "s|^interface:.*|interface: $iface|" /etc/anveshak/gateway.yaml
+echo "gateway interface: $iface"
 
 step "Dashboard"
 if [[ ! -x $prefix/dashboard-venv/bin/python ]]; then
@@ -90,17 +99,22 @@ if [[ ! -f /etc/anveshak/dashboard.env ]]; then
 fi
 
 step "Services"
-for unit in anv-can0 anv-gateway anv-dashboard; do
-  sed -e "s|@USER@|$user|g" -e "s|@PREFIX@|$prefix|g" -e "s|@REPO@|$repo|g" \
+# An earlier version of this script installed a can0-only unit; replace it with the template.
+if [[ -f /etc/systemd/system/anv-can0.service ]]; then
+  systemctl disable --now anv-can0 >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/anv-can0.service
+fi
+for unit in anv-can@ anv-gateway anv-dashboard; do
+  sed -e "s|@USER@|$user|g" -e "s|@PREFIX@|$prefix|g" -e "s|@REPO@|$repo|g" -e "s|@IFACE@|$iface|g" \
     "$here/systemd/$unit.service" >"/etc/systemd/system/$unit.service"
 done
 systemctl daemon-reload
-systemctl enable anv-can0 anv-gateway anv-dashboard >/dev/null
-if ip link show can0 >/dev/null 2>&1; then
-  systemctl restart anv-can0 anv-gateway anv-dashboard
-  echo "started; logs: journalctl -fu anv-gateway"
+systemctl enable "anv-can@$iface" anv-gateway anv-dashboard >/dev/null
+if ip link show "$iface" >/dev/null 2>&1; then
+  systemctl restart "anv-can@$iface" anv-gateway anv-dashboard
+  echo "started on $iface; logs: journalctl -fu anv-gateway"
 else
-  echo "can0 does not exist yet (needs the overlays and a reboot); the services start at boot"
+  echo "$iface does not exist yet (needs the overlays and a reboot); the services start at boot"
   reboot_needed=1
 fi
 
@@ -115,4 +129,4 @@ step "Done"
 if [[ $reboot_needed -eq 1 ]]; then
   echo "Reboot now (sudo reboot) to load the CAN HAT overlays."
 fi
-echo "Check the bus with: candump -td can0"
+echo "Check the bus with: candump -td $iface"

@@ -6,14 +6,15 @@ discovers how many are on the bus, and shows them live on the screen. It also ra
 board joins, goes missing or reboots.
 
 ```
-RPi + CAN HAT (120 Ω on) ──── ESP32 #1 ──── ESP32 #2 ──── … ──── ESP32 #n (120 Ω on)
+RPi + CAN HAT can1 (120 Ω on) ──── ESP32 #1 ──── ESP32 #2 ──── … ──── ESP32 #n (120 Ω on)
         CANH / CANL / GND, one daisy-chained twisted pair
 ```
 
 ## 1. Wire the bus
 
 1. **Termination: exactly two 120 Ω resistors, one at each end.** On the bench the RPi is one end,
-   so leave the HAT's 120 Ω jumper for CAN0 **on**. Keep the 120 Ω on the last ESP's transceiver
+   so leave the 120 Ω jumper **on** for the HAT channel the bus is wired to (the one Linux calls
+   `can1`, see below). Keep the 120 Ω on the last ESP's transceiver
    board and **remove it from every board in between**. Many transceiver breakouts have one
    soldered on (often marked R2 or 121).
 2. **Check with a multimeter**, everything powered off, across CANH and CANL anywhere on the bus:
@@ -49,17 +50,22 @@ sudo reboot
   `host/gateway/config/rpi-bench.yaml`).
 - Installs the dashboard (Python venv in `/opt/anveshak`, frontend built with npm). It creates a
   password in `/etc/anveshak/dashboard.env`, which other machines need; the touch screen doesn't.
-- Enables three services: `anv-can0` (500 kbps, 80 % sample point, auto-restart after bus-off),
+- Enables three services: `anv-can@can1` (500 kbps, 80 % sample point, auto-restart after bus-off),
   `anv-gateway` and `anv-dashboard`.
+
+**Which interface:** the bench bus is on the interface Linux names **`can1`**. The overlay order means
+Linux's names don't follow the labels printed on the HAT. That's the default. If yours turns out to
+be `can0`, run `sudo host/tools/rpi-bench/install.sh --iface can0`. To find out, bring both up and
+see which one shows the ESPs' frames in `candump`.
 - Adds a desktop autostart entry, so the Bench page opens full-screen when you log in.
 
 Run it again after a `git pull` to rebuild and restart.
 
 ## 3. Bring it up, one board at a time
 
-1. After the reboot, check the interface: `ip -details link show can0` should show
+1. After the reboot, check the interface: `ip -details link show can1` should show
    `bitrate 500000 sample-point 0.800` and `state ERROR-ACTIVE`.
-2. Watch the bus in a terminal: `candump -td can0`. You should see `010` (the RPi's heartbeat,
+2. Watch the bus in a terminal: `candump -td can1`. You should see `010` (the RPi's heartbeat,
    20 per second).
 3. Flash **one** ESP with the bench sketch and power it on. In `candump`:
    - `5FB` = the board asking for an ID (its MAC is in the data),
@@ -77,7 +83,7 @@ Run it again after a `git pull` to rebuild and restart.
 | Unplug a board's CAN wires | Its tile greys out ("missing") within 300 ms; the event log and a toast say so |
 | Press a board's reset button | "rebooted" alert; the tile turns yellow with a reboot count |
 | Restart the gateway: `sudo systemctl restart anv-gateway` | Boards keep their IDs (table in `/var/lib/anveshak/node_ids.txt`) |
-| Short CANH to CANL for a second | ESP LEDs go solid (red on the S3), then recover; the RPi's `restart-ms 100` brings `can0` back |
+| Short CANH to CANL for a second | ESP LEDs go solid (red on the S3), then recover; the RPi's `restart-ms 100` brings `can1` back |
 | Press E-STOP on the screen | `000` frame with payload `E5`; every tile shows ESTOP until released |
 
 ## Where to look when something is wrong
@@ -86,8 +92,8 @@ Run it again after a `git pull` to rebuild and restart.
 | --- | --- |
 | Board blinks (blue on the S3) forever, `candump` shows `5FB` but no `5F9` | Gateway not running: `journalctl -u anv-gateway` |
 | `candump` shows nothing from a board | TX/RX swapped, STB not low, transceiver not powered, or wrong pins in `board_pins.h` |
-| Board LED goes solid, or `ip -s link show can0` counts errors | Missing or extra termination (measure the 60 Ω), no common ground, or wrong `oscillator=` |
-| `can0` missing after reboot | Overlay lines not in `config.txt`, or the HAT isn't seated |
+| Board LED goes solid, or `ip -s link show can1` counts errors | Missing or extra termination (measure the 60 Ω), no common ground, or wrong `oscillator=` |
+| `can1` missing after reboot | Overlay lines not in `config.txt`, or the HAT isn't seated |
 | Screen stays white / "backend offline" | `systemctl status anv-dashboard`; the kiosk waits for `http://localhost:8080/api/health` |
 
 **To give a board a new ID:** type `forget` in its serial console, then long-press its old tile and
