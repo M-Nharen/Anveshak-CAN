@@ -103,6 +103,15 @@ pick either of these:
   in the dialog.
 - **A ready `.ino.bin`** (Arduino IDE: **Sketch → Export Compiled Binary**; not the `.merged.bin`).
 
+With WROOMs and S3s on the same bus, each `.cpp` is built for the chip of the node you tap, and each
+chip's build is cached separately. To build S3 images with board options (for example `Serial` on
+the native USB port), add a line to `/etc/anveshak/dashboard.env`, then
+`sudo systemctl restart anv-dashboard`:
+
+```sh
+ANV_DASH_FQBN_ESP32S3=esp32:esp32:esp32s3:CDCOnBoot=cdc
+```
+
 The RPi refuses an image for the other chip, and never flashes an armed node. A banner and the tile
 show the progress. When the dialog says the node restarted, it's running the new image. If the new
 image crashes, the board rolls back to the old one by itself.

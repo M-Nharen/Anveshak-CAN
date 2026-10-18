@@ -140,3 +140,24 @@ def test_bench_view_shows_v2_fields():
     tile = b["nodes"][0]
     assert tile["state"] == "IDLE" and tile["type"] == "esp32_bench" and tile["values"][0]["unit"] == "degC"
     assert b["events"][0]["text"] == "NODE16: sensor_fault"
+
+
+def test_s3_builds_use_the_configured_board_options(tmp_path):
+    async def main():
+        job, _, calls, _ = setup(tmp_path, chip=2)
+        job.settings.fqbn_esp32s3 = "esp32:esp32:esp32s3:CDCOnBoot=cdc"
+        await job.start(16, b"// s3 app\n", "user_app.cpp")
+        assert (await finished(job))["state"] == "done"
+        assert calls.read_text().split() == ["esp32:esp32:esp32s3:CDCOnBoot=cdc"]
+        # The options are part of the cache key: the plain S3 build is a different image.
+        job.settings.fqbn_esp32s3 = "esp32:esp32:esp32s3"
+        await job.start(16, b"// s3 app\n", "user_app.cpp")
+        assert (await finished(job))["state"] == "done"
+        assert len(calls.read_text().split()) == 2
+
+    asyncio.run(main())
+
+
+def test_fqbn_settings_from_the_environment():
+    s = Settings.from_env({"ANV_DASH_FQBN_ESP32S3": "esp32:esp32:esp32s3:CDCOnBoot=cdc"})
+    assert s.fqbn_esp32s3.endswith("CDCOnBoot=cdc") and s.fqbn_esp32 == "esp32:esp32:esp32"

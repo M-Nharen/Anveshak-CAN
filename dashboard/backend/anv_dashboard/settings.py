@@ -53,6 +53,10 @@ class Settings:
     arduino_cli: str = field(default_factory=lambda: shutil.which("arduino-cli")
                              or str(Path.home() / ".local" / "bin" / "arduino-cli"))
     build_cache_dir: Path = field(default_factory=lambda: Path.home() / ".cache" / "anveshak" / "builds")
+    # Board (FQBN, with any menu options) to build a .cpp for, per chip: 1 = WROOM, 2 = ESP32-S3. An S3
+    # board with only the native USB port wants "esp32:esp32:esp32s3:CDCOnBoot=cdc" so Serial shows there.
+    fqbn_esp32: str = "esp32:esp32:esp32"
+    fqbn_esp32s3: str = "esp32:esp32:esp32s3"
 
     can_bitrate: int = 500_000
     avg_frame_bits: float = (
@@ -72,6 +76,8 @@ class Settings:
         s.can_interface = e.get("ANV_DASH_CAN_INTERFACE", s.can_interface)
         s.flash_mode = e.get("ANV_DASH_FLASH_MODE", s.flash_mode)
         s.arduino_cli = e.get("ANV_DASH_ARDUINO_CLI", s.arduino_cli)
+        s.fqbn_esp32 = e.get("ANV_DASH_FQBN_ESP32", s.fqbn_esp32)
+        s.fqbn_esp32s3 = e.get("ANV_DASH_FQBN_ESP32S3", s.fqbn_esp32s3)
         if e.get("ANV_DASH_BUILD_CACHE"):
             s.build_cache_dir = Path(e["ANV_DASH_BUILD_CACHE"])
         s.port = int(e.get("ANV_DASH_PORT", s.port))

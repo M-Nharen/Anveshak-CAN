@@ -32,11 +32,28 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3 \
 
 | Board | CAN TX | CAN RX | LED |
 | --- | --- | --- | --- |
-| ESP32-S3 DevKitC | GPIO 16 | GPIO 15 | RGB on GPIO 48 (38 on some revisions) |
+| ESP32-S3 DevKitC | GPIO 16 | GPIO 15 | RGB: the board's `RGB_BUILTIN` (GPIO 48 on most, 38 on v1.1) |
 | WROOM DevKit | GPIO 4 | GPIO 5 | GPIO 2 |
 
 Wire ESP TX to the transceiver's TXD and ESP RX to its RXD; crossing them is the classic mistake.
 The TCAN's STB is tied to GND. If a board drives it from a GPIO instead, set `BENCH_TCAN_STB_GPIO`.
+
+### ESP32-S3 boards
+
+S3s and WROOMs mix freely on the same bus. The same sketch builds for both, and the screen shows
+each board's chip.
+
+- **Board in the IDE:** **ESP32S3 Dev Module**. Leave PSRAM **Disabled** and the flash size at
+  4 MB, even on 8/16 MB modules: the sketch fits, and the update slots stay the same size.
+- **CAN pins:** GPIO 16 (TX) and 15 (RX). Keep clear of GPIO 19/20 (native USB), 26–32 (flash)
+  and, on modules with octal PSRAM (N8R8, N16R8), 33–37. To use other pins, change
+  `BENCH_CAN_TX_GPIO` / `BENCH_CAN_RX_GPIO` in `board_pins.h`.
+- **Which USB port:** a DevKitC has two. Flash and watch the Serial Monitor on the one marked
+  **UART** (or COM). For `Serial` on the one marked **USB**, set **Tools → USB CDC On Boot →
+  Enabled**. Boards with only the native USB port need that setting. For the Pi's `.cpp` builds,
+  add `ANV_DASH_FQBN_ESP32S3=esp32:esp32:esp32s3:CDCOnBoot=cdc` to `/etc/anveshak/dashboard.env`.
+- **LED:** the RGB LED follows the board you pick (`RGB_BUILTIN`). On a board whose LED is
+  elsewhere, set `BENCH_LED_GPIO` in `board_pins.h`.
 
 ## What the LED means
 

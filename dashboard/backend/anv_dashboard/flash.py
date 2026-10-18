@@ -164,7 +164,7 @@ class GatewayFlash:
 
     async def _image_from_source(self, node_id: int, source: bytes) -> Path | None:
         node = self._node(node_id)
-        fqbn = firmware_build.FQBN_BY_CHIP.get((node or {}).get("hw_target", 0))
+        fqbn = {1: self.settings.fqbn_esp32, 2: self.settings.fqbn_esp32s3}.get((node or {}).get("hw_target", 0))
         if fqbn is None:
             self._fail(f"node {node_id}'s chip isn't known yet (is it on the bus?); can't pick what to build for")
             return None

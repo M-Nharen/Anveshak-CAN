@@ -18,7 +18,6 @@ from pathlib import Path
 
 SKETCH = "bench_esp32_arduino"
 LIBRARIES = ("anv_link", "anv_proto", "anv_node")
-FQBN_BY_CHIP = {1: "esp32:esp32:esp32", 2: "esp32:esp32:esp32s3"}  # protocol info_page `chip`
 IMAGE_NAME = f"{SKETCH}.ino.bin"
 
 

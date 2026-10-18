@@ -167,3 +167,43 @@ def test_bridge_speaks_the_old_gateway_protocol(gw, tmp_path):
             assert call(id=6, cmd="estop")["ok"] and gw.state()["estop_latched"]
     finally:
         bridge.stop()
+
+
+def test_s3_node_takes_an_s3_image_and_refuses_a_wroom_one(gw, bus, schema):
+    t = schema.type("esp32_bench")
+    node = FakeNode(bus, schema, "esp32_bench", 22)
+    node.info_pages["chip"] = 2  # an ESP32-S3
+    ota = FakeOtaNode(bus, schema, 22, t.type_id, chip=2, peer=2)
+    try:
+        assert wait_for(lambda: (n := node_state(gw, 22)) is not None and n["hw_name"] == "ESP32-S3")
+        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+            f.write(app_image(chip_id=0))  # a WROOM image
+        gw.flash(22, f.name)
+        assert wait_for(lambda: gw.state()["flash"]["state"] == "failed")
+        assert "the node is an ESP32-S3" in gw.state()["flash"]["msg"]
+        s3_image = app_image(chip_id=9)
+        with open(f.name, "wb") as out:
+            out.write(s3_image)
+        gw.flash(22, f.name)
+        assert wait_for(lambda: gw.state()["flash"]["state"] != "running", timeout=10)
+        assert gw.state()["flash"]["state"] == "done" and ota.image == s3_image
+        os.unlink(f.name)
+    finally:
+        ota.stop()
+        node.stop()
+
+
+def test_mixed_bench_shows_each_boards_chip(gw, bus, schema):
+    wroom = FakeNode(bus, schema, "esp32_bench", 0, mac=0x246F28000010)
+    s3 = FakeNode(bus, schema, "esp32_bench", 0, mac=0xA4CF12000011)
+    s3.info_pages["chip"] = 2
+    try:
+        assert wait_for(lambda: wroom.id and s3.id)
+
+        def chips():
+            return {(node_state(gw, n.id) or {}).get("hw_name") for n in (wroom, s3)}
+
+        assert wait_for(lambda: chips() == {"ESP32", "ESP32-S3"})
+    finally:
+        wroom.stop()
+        s3.stop()
