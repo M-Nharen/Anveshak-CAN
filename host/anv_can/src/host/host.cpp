@@ -627,6 +627,16 @@ bool Host::pin_id(uint64_t mac, uint8_t node_id, uint16_t type_id, std::string* 
   return true;
 }
 
+bool Host::forget_id(uint8_t node_id, std::string* error) {
+  std::lock_guard<std::mutex> lk(mu_);
+  if (!allocator_.forget(node_id, error)) {
+    if (error && error->empty()) *error = "no board holds ID " + std::to_string(node_id);
+    return false;
+  }
+  registry_.set_mac(node_id, 0);
+  return true;
+}
+
 // --- service clients ---------------------------------------------------------------------
 
 Status Host::check_client(uint8_t node, const NodeType** type, std::string* error) const {

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anv-bench-gateway"
+version = "0.1.0"
+description = "The always-running v2 host on the bench RPi: heartbeat, IDs, discovery, text, flashing, and the dashboard's socket"
+requires-python = ">=3.10"
+# Needs the anv_can bindings: pip install ./host/anv_can first (a local build, not on PyPI).
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+anv-bench-gateway = "anv_bench_gateway.cli:main"
+
+[tool.setuptools]
+packages = ["anv_bench_gateway"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

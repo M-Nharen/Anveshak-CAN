@@ -146,6 +146,9 @@ class Host {
   void set_autonomy_ready(bool ready);
   // Pin a board to an ID in this host's table (applies to its next id_request).
   bool pin_id(uint64_t mac, uint8_t node_id, uint16_t type_id, std::string* error);
+  // Free node_id in this host's table, so the allocator can give it to another board. The board
+  // keeps using it until it forgets it too (NMT forget_id). False if no board holds that ID.
+  bool forget_id(uint8_t node_id, std::string* error);
 
   // --- settings (parameters), by name or index; the node's type or the protocol's -------
   Result get(uint8_t node, const std::string& param);

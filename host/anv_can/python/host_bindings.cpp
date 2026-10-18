@@ -232,6 +232,10 @@ void bind_host(py::module_& m) {
         std::string err;
         if (!h.pin_id(mac, node, type_id, &err)) throw HostError(err);
       }, py::arg("mac"), py::arg("node"), py::arg("type_id"))
+      .def("forget_id", [](Host& h, uint8_t node) {
+        std::string err;
+        if (!h.forget_id(node, &err)) throw HostError(err);
+      }, py::arg("node"))
       // settings, rates, actions
       .def("get", [](Host& h, uint8_t node, const std::string& p) {
         Result r;

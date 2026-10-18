@@ -135,6 +135,15 @@ TEST(assigns_ids_and_remembers_them) {
   t::FakeNode b(bus, type("esp32_bench"), 0, 0xA4CF12000002ull);
   b.start();
   CHECK(eventually([&] { return b.id_ != 0; }) && b.id_ == 31);
+  // Forgetting an ID frees it in the table: the next new board gets it.
+  std::string err;
+  CHECK(h2.forget_id(31, &err));
+  CHECK(!h2.forget_id(31, &err) && !err.empty());
+  CHECK(h2.id_table().size() == 1);
+  b.stop();
+  t::FakeNode c(bus, type("esp32_bench"), 0, 0xA4CF12000003ull);
+  c.start();
+  CHECK(eventually([&] { return c.id_ != 0; }) && c.id_ == 31);
   h2.stop();
   std::remove(table.c_str());
 }
