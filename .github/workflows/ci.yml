@@ -250,6 +250,14 @@ jobs:
       - name: Python tests
         run: PATH=/tmp/venv/bin:$PATH python -m pytest host/anv_can/python/tests -v -rs
 
+      # The bench gateway app (host/apps/bench_gateway) on top of these bindings: the touch
+      # screen's always-running v2 host. Its tests use the fake nodes from host/anv_can.
+      - name: Bench gateway (lint + tests)
+        run: |
+          /tmp/venv/bin/pip install ./host/apps/bench_gateway
+          (cd host/apps/bench_gateway && /tmp/venv/bin/ruff check .)
+          PATH=/tmp/venv/bin:$PATH python -m pytest host/apps/bench_gateway/tests -v
+
   # 32-bit Raspberry Pi OS (armhf): cross-compile the C++ library and run its tests under qemu.
   host-lib-armhf:
     name: Host library anv_can (armhf, 32-bit Raspberry Pi OS)

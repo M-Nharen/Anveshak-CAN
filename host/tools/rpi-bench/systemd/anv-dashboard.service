@@ -14,6 +14,9 @@ Environment=ANV_DASH_STATIC=@REPO@/dashboard/frontend/dist
 Environment=ANV_DASH_TRUST_LOCALHOST=1
 # Firmware updates over CAN (anv-flash) use this interface.
 Environment=ANV_DASH_CAN_INTERFACE=@IFACE@
+# "gateway": the v2 gateway flashes, and .cpp uploads are built here with arduino-cli; "anv_flash": old tool.
+Environment=ANV_DASH_FLASH_MODE=@FLASH_MODE@
+Environment=ANV_DASH_ARDUINO_CLI=@ARDUINO_CLI@
 EnvironmentFile=-/etc/anveshak/dashboard.env
 ExecStart=@PREFIX@/dashboard-venv/bin/python -m anv_dashboard
 Restart=always

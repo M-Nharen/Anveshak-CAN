@@ -1,0 +1,18 @@
+# The v2 bench gateway (host/apps/bench_gateway), installed as anv-gateway.service so the dashboard
+# and the kiosk don't care which gateway runs. @USER@, @PREFIX@ and @IFACE@ are filled in by install.sh.
+[Unit]
+Description=Anveshak CAN gateway (v2 libraries)
+Requires=anv-can@@IFACE@.service
+After=anv-can@@IFACE@.service
+
+[Service]
+User=@USER@
+ExecStart=@PREFIX@/dashboard-venv/bin/anv-bench-gateway --interface @IFACE@ --host-id 2 --socket /run/anveshak/gateway.sock --id-table /var/lib/anveshak/node_ids_v2.txt
+RuntimeDirectory=anveshak
+RuntimeDirectoryMode=0750
+StateDirectory=anveshak
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

@@ -11,6 +11,8 @@
   export let connected;
 
   const SENSOR_LABELS = ['Temp', 'Heap', 'RX', 'TX'];
+  const UNITS = { degC: '°C' };
+  const fmtValue = (v) => `${Number.isInteger(v.value) ? v.value : v.value.toFixed(1)}${v.unit ? ' ' + (UNITS[v.unit] ?? v.unit) : ''}`;
   const fmtSensor = (i, v) => (i === 0 ? `${(v / 100).toFixed(1)}°C` : i === 1 ? `${v} KiB` : `${v}`);
   const fmtUptime = (s) => {
     if (s === null || s === undefined) return '—';
@@ -154,13 +156,19 @@
               <span class="dot" class:on={lit[n.node_id] && n.alive}></span>
               <span class="name">{n.name}</span>
               <span class="muted">#{n.node_id}</span>
-              {#if n.hw}<span class="hw">{n.hw}</span>{/if}
+              {#if n.hw || n.type}<span class="hw" title={n.type}>{n.hw || n.type}</span>{/if}
             </div>
             <div class="state-row">
-              <span class="pill {n.alive ? (n.state === 'DISARMED' || n.state === 'ARMED' ? 'green' : 'yellow') : 'grey'}">{n.alive ? n.state : 'MISSING'}</span>
+              <span class="pill {n.alive ? (['IDLE', 'DISARMED', 'ARMED'].includes(n.state) ? 'green' : 'yellow') : 'grey'}">{n.alive ? n.state : 'MISSING'}</span>
               <span class="muted">{n.alive ? `up ${fmtUptime(n.uptime_s)}` : `last seen ${Math.round((n.age_ms ?? 0) / 1000)}s ago`}</span>
             </div>
-            {#if n.sensors?.length}
+            {#if n.values?.length}
+              <div class="sensors">
+                {#each n.values.slice(0, 6) as v (v.name)}
+                  <div><span class="label">{v.name.replace(/_/g, ' ')}</span><span class="value">{fmtValue(v)}</span></div>
+                {/each}
+              </div>
+            {:else if n.sensors?.length}
               <div class="sensors">
                 {#each n.sensors as v, i}
                   <div><span class="label">{SENSOR_LABELS[i]}</span><span class="value">{fmtSensor(i, v)}</span></div>

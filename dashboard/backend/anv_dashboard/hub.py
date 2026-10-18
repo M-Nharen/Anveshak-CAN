@@ -22,7 +22,7 @@ from . import views
 from .auth import Sessions
 from .bridge import Bridge, BridgeError
 from .control import ControlManager
-from .flash import FlashJobs
+from .flash import FlashJobs, GatewayFlash
 from .settings import Settings
 
 log = logging.getLogger("anv_dashboard")
@@ -55,7 +55,9 @@ class Hub:
             settings.password, settings.session_ttl_s, clock
         )
         self.control = ControlManager(settings, clock)
-        self.flash = FlashJobs(settings)
+        self.flash: FlashJobs | GatewayFlash = (
+            GatewayFlash(settings, bridge, lambda: self.state) if settings.flash_mode == "gateway" else FlashJobs(settings)
+        )
         self.rates = views.RateTracker()
         self.state: dict[str, Any] | None = None
         self.clients: dict[str, Client] = {}

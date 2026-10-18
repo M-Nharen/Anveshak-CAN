@@ -7,6 +7,7 @@
 #   sudo host/tools/rpi-bench/install.sh                 everything, on can1
 #   sudo host/tools/rpi-bench/install.sh --iface can0    use the HAT's other channel
 #   sudo host/tools/rpi-bench/install.sh --no-overlays   leave /boot/firmware/config.txt alone
+#   sudo host/tools/rpi-bench/install.sh --v1            the old 11-bit gateway instead of the v2 one
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -15,12 +16,14 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 edit_overlays=1
+v1=0  # the v2 bench gateway (host/apps/bench_gateway) unless --v1
 # On this bench the bus is wired to the interface Linux calls can1 (the overlay order makes the
 # names differ from the HAT's printed labels).
 iface=can1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-overlays) edit_overlays=0 ;;
+    --v1) v1=1 ;;
     --iface) iface="${2:?--iface needs a name, e.g. can1}"; shift ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
@@ -38,7 +41,7 @@ step() { printf '\n=== %s\n' "$*"; }
 
 step "Packages (the first run downloads a few hundred MB: nodejs/npm pull in many packages)"
 apt-get update
-apt-get install -y build-essential cmake can-utils python3-venv curl nodejs npm
+apt-get install -y build-essential cmake can-utils python3-venv python3-dev curl nodejs npm
 if ! command -v chromium >/dev/null && ! command -v chromium-browser >/dev/null; then
   apt-get install -y chromium-browser || apt-get install -y chromium
 fi
@@ -69,34 +72,61 @@ else
   printf '  %s\n' "${overlays[@]}"
 fi
 
-step "Gateway (rover.c is a large generated file: a few minutes on a Pi, with no output while it compiles)"
-build="$repo/build-gw-rpi"
-sudo -u "$user" cmake -S "$repo/host/gateway" -B "$build" -DCMAKE_BUILD_TYPE=Release -DANV_GATEWAY_TESTS=OFF >/dev/null
-sudo -u "$user" cmake --build "$build" -j"$(nproc)"
-install -D -m 0755 "$build/anv_can_gateway" "$prefix/bin/anv_can_gateway"
-install -d -m 0755 /etc/anveshak
-if [[ ! -f /etc/anveshak/gateway.yaml ]]; then
-  install -m 0644 "$repo/host/gateway/config/rpi-bench.yaml" /etc/anveshak/gateway.yaml
-  echo "wrote /etc/anveshak/gateway.yaml"
-else
-  echo "kept existing /etc/anveshak/gateway.yaml"
-fi
-sed -i "s|^interface:.*|interface: $iface|" /etc/anveshak/gateway.yaml
-echo "gateway interface: $iface"
-
-step "Dashboard"
+step "Python environment (the dashboard, and on v2 the gateway, run from it)"
 if [[ ! -x $prefix/dashboard-venv/bin/python ]]; then
   python3 -m venv "$prefix/dashboard-venv"
 fi
 "$prefix/dashboard-venv/bin/pip" install --progress-bar on -r "$repo/dashboard/backend/requirements.txt" \
   -r "$repo/host/tools/anv_flash/requirements.txt"
-# anv-flash on the command line, using the same venv the dashboard runs it from.
-cat >"$prefix/bin/anv-flash" <<EOF
+install -d -m 0755 /etc/anveshak "$prefix/bin"
+
+if [[ $v1 -eq 0 ]]; then
+  step "Gateway: v2 libraries (anv_can builds C++ bindings: a few minutes on a Pi)"
+  "$prefix/dashboard-venv/bin/pip" install --progress-bar on "$repo/host/anv_can" "$repo/host/apps/bench_gateway"
+  # The v2 tools on the command line: anv-host (nodes, settings, arm, events) and anv-flash.
+  ln -sf "$prefix/dashboard-venv/bin/anv-flash" /usr/local/bin/anv-flash
+  ln -sf "$prefix/dashboard-venv/bin/anv-host" /usr/local/bin/anv-host
+  ln -sf "$prefix/dashboard-venv/bin/anv-can" /usr/local/bin/anv-can
+  gw_unit=anv-bench-gateway
+  flash_mode=gateway
+else
+  step "Gateway (rover.c is a large generated file: a few minutes on a Pi, with no output while it compiles)"
+  build="$repo/build-gw-rpi"
+  sudo -u "$user" cmake -S "$repo/host/gateway" -B "$build" -DCMAKE_BUILD_TYPE=Release -DANV_GATEWAY_TESTS=OFF >/dev/null
+  sudo -u "$user" cmake --build "$build" -j"$(nproc)"
+  install -D -m 0755 "$build/anv_can_gateway" "$prefix/bin/anv_can_gateway"
+  install -d -m 0755 /etc/anveshak
+  if [[ ! -f /etc/anveshak/gateway.yaml ]]; then
+    install -m 0644 "$repo/host/gateway/config/rpi-bench.yaml" /etc/anveshak/gateway.yaml
+    echo "wrote /etc/anveshak/gateway.yaml"
+  else
+    echo "kept existing /etc/anveshak/gateway.yaml"
+  fi
+  sed -i "s|^interface:.*|interface: $iface|" /etc/anveshak/gateway.yaml
+  echo "gateway interface: $iface"
+  # anv-flash (old, 11-bit) on the command line, using the same venv the dashboard runs it from.
+  cat >"$prefix/bin/anv-flash" <<EOF
 #!/bin/sh
 PYTHONPATH="$repo/host/tools" exec "$prefix/dashboard-venv/bin/python" -m anv_flash --channel "$iface" "\$@"
 EOF
-chmod 0755 "$prefix/bin/anv-flash"
-ln -sf "$prefix/bin/anv-flash" /usr/local/bin/anv-flash
+  chmod 0755 "$prefix/bin/anv-flash"
+  ln -sf "$prefix/bin/anv-flash" /usr/local/bin/anv-flash
+  gw_unit=anv-gateway
+  flash_mode=anv_flash
+fi
+
+step "arduino-cli (the Flash button builds a user_app.cpp into firmware with it)"
+arduino_cli="$(sudo -u "$user" bash -lc 'command -v arduino-cli' 2>/dev/null || true)"
+[[ -z $arduino_cli && -x $home/.local/bin/arduino-cli ]] && arduino_cli="$home/.local/bin/arduino-cli"
+if [[ -n $arduino_cli ]] && sudo -u "$user" "$arduino_cli" core list 2>/dev/null | grep -q '^esp32:esp32'; then
+  echo "found $arduino_cli with the esp32 core"
+else
+  echo "arduino-cli or its esp32 core is missing: uploading a .bin still works, a .cpp needs them."
+  echo "Set it up once as $user (see host/tools/rpi-bench/README.md, 'Flash from the screen'), then re-run this."
+  arduino_cli="${arduino_cli:-$home/.local/bin/arduino-cli}"
+fi
+
+step "Dashboard"
 (cd "$repo/dashboard/frontend" && sudo -u "$user" npm install --no-audit --no-fund && sudo -u "$user" npm run build)
 if [[ ! -f /etc/anveshak/dashboard.env ]]; then
   password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(8))')"
@@ -112,10 +142,13 @@ if [[ -f /etc/systemd/system/anv-can0.service ]]; then
   systemctl disable --now anv-can0 >/dev/null 2>&1 || true
   rm -f /etc/systemd/system/anv-can0.service
 fi
-for unit in anv-can@ anv-gateway anv-dashboard; do
+fill() {
   sed -e "s|@USER@|$user|g" -e "s|@PREFIX@|$prefix|g" -e "s|@REPO@|$repo|g" -e "s|@IFACE@|$iface|g" \
-    "$here/systemd/$unit.service" >"/etc/systemd/system/$unit.service"
-done
+    -e "s|@FLASH_MODE@|$flash_mode|g" -e "s|@ARDUINO_CLI@|$arduino_cli|g" "$here/systemd/$1.service"
+}
+fill anv-can@ >/etc/systemd/system/anv-can@.service
+fill "$gw_unit" >/etc/systemd/system/anv-gateway.service  # same name either way: the dashboard needs it
+fill anv-dashboard >/etc/systemd/system/anv-dashboard.service
 systemctl daemon-reload
 systemctl enable "anv-can@$iface" anv-gateway anv-dashboard >/dev/null
 if ip link show "$iface" >/dev/null 2>&1; then

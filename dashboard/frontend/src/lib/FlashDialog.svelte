@@ -17,7 +17,7 @@
   $: running = flash?.state === 'running';
   $: otherRunning = running && !mine;
 
-  const PHASES = { starting: 'Starting', check: 'Checking', write: 'Writing', verify: 'Verifying', boot: 'Restarting', confirm: 'Waiting for the node', done: 'Done', error: 'Failed' };
+  const PHASES = { starting: 'Starting', build: 'Compiling', cached: 'Using the cached build', check: 'Checking', write: 'Writing', verify: 'Verifying', boot: 'Restarting', confirm: 'Waiting for the node', done: 'Done', error: 'Failed' };
 
   async function start() {
     if (!file) return;
@@ -50,17 +50,18 @@
         {#if flash.phase === 'write'}{Math.round(flash.pct)}%{/if}
         <span class="muted">· {flash.file} · {flash.elapsed_s}s</span>
       </p>
-      {#if flash.msg}<p class="msg {flash.state}">{flash.msg}</p>{/if}
+      {#if flash.msg}<pre class="msg {flash.state}">{flash.msg}</pre>{/if}
+      {#if flash.phase === 'build' && flash.log?.length}<pre class="log">{flash.log.slice(-6).join('\n')}</pre>{/if}
     {/if}
 
     {#if !running}
       <label class="pick">
-        <input type="file" accept=".bin" on:change={(e) => (file = e.target.files[0] ?? null)} />
+        <input type="file" accept=".cpp,.bin" on:change={(e) => (file = e.target.files[0] ?? null)} />
       </label>
       <p class="muted small">
-        In the Arduino IDE: Sketch → Export Compiled Binary, then pick
-        <code>build/…/bench_esp32_arduino.ino.bin</code> (not the <code>.merged.bin</code>). The board must be
-        {node.hw || 'the right chip'} and disarmed. Takes about 30–60 s.
+        Pick a <b>user_app.cpp</b>: the Pi builds the bench sketch with it for {node.hw || "this node's chip"}
+        (a few minutes the first time; the same file again reuses the build), then flashes it. Or pick a ready
+        <code>bench_esp32_arduino.ino.bin</code> (not the <code>.merged.bin</code>). The board must be disarmed.
       </p>
     {:else if otherRunning}
       <p class="muted">Node {flash.node_id} is being flashed. One node at a time.</p>
@@ -90,6 +91,8 @@
   .bar.failed { background: var(--bad); }
   .msg.done { color: var(--ok); }
   .msg.failed { color: var(--bad); }
+  pre { margin: 0; white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
+  .log { color: var(--muted); max-height: 7.5em; overflow: hidden; }
   .pick input { font: inherit; }
   .small { font-size: 12px; margin: 0; }
   p { margin: 0; }

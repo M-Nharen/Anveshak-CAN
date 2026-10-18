@@ -5,6 +5,10 @@ boards (WROOM or S3) running `firmware/nodes/bench_esp32_arduino`. The RPi gives
 discovers how many are on the bus, and shows them live on the screen. It also raises an alert when a
 board joins, goes missing or reboots.
 
+**This branch runs the v2 libraries** (29-bit IDs, `schema/`): the always-running gateway is
+`anv-bench-gateway` (`host/apps/bench_gateway`), built on `anv_can`, and the boards run the v2 bench
+sketch. The screen looks and works as before. `install.sh --v1` puts the old 11-bit gateway back.
+
 ```
 RPi + CAN HAT can1 (120 Ω on) ──── ESP32 #1 ──── ESP32 #2 ──── … ──── ESP32 #n (120 Ω on)
         CANH / CANL / GND, one daisy-chained twisted pair
@@ -64,17 +68,18 @@ Run it again after a `git pull` to rebuild and restart.
 ## 3. Bring it up, one board at a time
 
 1. After the reboot, check the interface: `ip -details link show can1` should show
-   `bitrate 500000 sample-point 0.800` and `state ERROR-ACTIVE`.
-2. Watch the bus in a terminal: `candump -td can1`. You should see `010` (the RPi's heartbeat,
-   20 per second).
-3. Flash **one** ESP with the bench sketch and power it on. In `candump`:
-   - `5FB` = the board asking for an ID (its MAC is in the data),
-   - `5F9` = the RPi answering,
-   - then `680` (heartbeat of node 16, 10 per second) and `480` (its sensor frame).
+   `bitrate 500000` and `state ERROR-ACTIVE`. Check the gateway with `systemctl status anv-gateway`.
+2. Watch the bus decoded: `anv-can dump can1`. You should see `host_heartbeat` from node 2 (the RPi,
+   20 per second). Plain `candump -td can1` works too, but the 29-bit IDs are harder to read.
+3. Flash **one** ESP over USB with the v2 bench sketch. In the Arduino IDE, link the libraries first,
+   as `firmware/nodes/bench_esp32_arduino/README.md` describes. Power it on. In `anv-can dump`:
+   - `id_request` from 255 = the board asking for an ID (its MAC is in the data),
+   - `id_assign` from 2 = the RPi answering,
+   - then `heartbeat` and `status` from node 16, 10 per second each.
 
-   The screen shows a tile for NODE16 within a second, and the board's LED flickers green.
-4. Add the other boards one by one. Each new board gets the next ID (17, 18, 19), and the same
-   board always gets its own ID back, even after the RPi restarts.
+   The screen shows a tile for NODE16 within a second, with its type, chip and live values.
+4. Add the other boards one by one. Each new board gets the next ID (17, 18, ...), and the same
+   board always gets its own ID back, even after the RPi restarts (`/var/lib/anveshak/node_ids_v2.txt`).
 
 ## 4. Failure tests
 
@@ -82,35 +87,58 @@ Run it again after a `git pull` to rebuild and restart.
 | --- | --- |
 | Unplug a board's CAN wires | Its tile greys out ("missing") within 300 ms; the event log and a toast say so |
 | Press a board's reset button | "rebooted" alert; the tile turns yellow with a reboot count |
-| Restart the gateway: `sudo systemctl restart anv-gateway` | Boards keep their IDs (table in `/var/lib/anveshak/node_ids.txt`) |
+| Restart the gateway: `sudo systemctl restart anv-gateway` | Boards keep their IDs (table in `/var/lib/anveshak/node_ids_v2.txt`) |
 | Short CANH to CANL for a second | ESP LEDs go solid (red on the S3), then recover; the RPi's `restart-ms 100` brings `can1` back |
-| Press E-STOP on the screen | `000` frame with payload `E5`; every tile shows ESTOP until released |
+| Press E-STOP on the screen | An `estop` frame; every tile shows ESTOP until the leader releases it |
 
 ## 5. Flash a node over CAN
 
-1. Export the image in the Arduino IDE (**Sketch → Export Compiled Binary**, use the `.ino.bin`).
-2. On the screen, or at `http://<rpi>:8080/#bench` from a laptop, tap **Flash…** on the node's tile,
-   pick the file and tap **Flash**. A banner and the tile show the progress, and the dialog says when
-   the node is running the new build.
-3. From a terminal on the Pi:
-   ```sh
-   anv-flash info  --node 16
-   anv-flash flash --node 16 ~/bench_esp32_arduino.ino.bin
-   ```
+On the screen (or at `http://<rpi>:8080/#bench` from a laptop), tap **Flash…** on the node's tile and
+pick either of these:
 
-The RPi flashes when it leads, or when no host leads. The node must be disarmed. One node at a
-time. Details and safety rules: `firmware/nodes/bench_esp32_arduino/README.md`.
+- **A `user_app.cpp`**: your code for the board (`firmware/nodes/bench_esp32_arduino/user_app.cpp` is
+  the template). The Pi builds the bench sketch with it for that node's chip (WROOM or S3), then
+  flashes it. The first build takes a few minutes. Uploading **the same file** again reuses that build
+  and goes straight to flashing; builds are kept in `~/.cache/anveshak/builds`. Compiler errors show
+  in the dialog.
+- **A ready `.ino.bin`** (Arduino IDE: **Sketch → Export Compiled Binary**; not the `.merged.bin`).
+
+The RPi refuses an image for the other chip, and never flashes an armed node. A banner and the tile
+show the progress. When the dialog says the node restarted, it's running the new image. If the new
+image crashes, the board rolls back to the old one by itself.
+
+**One-time setup for `.cpp` uploads**, as the desktop user (not root):
+
+```sh
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=~/.local/bin sh
+~/.local/bin/arduino-cli config init
+~/.local/bin/arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+~/.local/bin/arduino-cli core update-index
+~/.local/bin/arduino-cli core install esp32:esp32@3.3.12
+```
+
+Then re-run `sudo host/tools/rpi-bench/install.sh` so the dashboard knows where `arduino-cli` is.
+
+**From a terminal on the Pi** (the v2 tools; the interface comes first):
+
+```sh
+anv-flash list can1                                    # nodes: type, state, build, chip
+anv-flash flash can1 16 bench_esp32_arduino.ino.bin    # one node
+anv-host list can1                                     # nodes and hosts
+anv-host events can1                                   # error events from every node
+```
 
 ## Where to look when something is wrong
 
 | Symptom | Likely cause |
 | --- | --- |
-| Board blinks (blue on the S3) forever, `candump` shows `5FB` but no `5F9` | Gateway not running: `journalctl -u anv-gateway` |
+| Board blinks (blue on the S3) forever; `anv-can dump can1` shows `id_request` but no `id_assign` | Gateway not running: `journalctl -u anv-gateway` |
 | `candump` shows nothing from a board | TX/RX swapped, STB not low, transceiver not powered, or wrong pins in `board_pins.h` |
 | Board LED goes solid, or `ip -s link show can1` counts errors | Missing or extra termination (measure the 60 Ω), no common ground, or wrong `oscillator=` |
 | `can1` missing after reboot | Overlay lines not in `config.txt`, or the HAT isn't seated |
-| Flash says "doesn't answer update requests" | The board runs an older sketch without CAN updates: flash it once over USB |
-| Flash says "another host leads the bus" | Make the RPi lead, or flash from the host that leads |
+| Board never shows up, but `anv-can dump` shows 11-bit frames from it | It still runs the old (11-bit) sketch: flash the v2 sketch once over USB |
+| Flash fails with "arduino-cli not found" or an esp32 error | Do the one-time `.cpp` setup in section 5, then re-run `install.sh` |
 | Screen stays white / "backend offline" | `systemctl status anv-dashboard`; the kiosk waits for `http://localhost:8080/api/health` |
 
 **To give a board a new ID:** type `forget` in its serial console, then long-press its old tile and
@@ -126,12 +154,15 @@ network. Use the normal tabs, or add `?kiosk` for the full-screen layout.
 
 ## Without any hardware
 
-The same flow runs on a virtual bus. You need `vcan` (Linux):
+The gateway's tests run it against fake v2 nodes on an in-process bus
+(`pytest host/apps/bench_gateway/tests`, after `pip install ./host/anv_can ./host/apps/bench_gateway`).
+On a Linux machine with `vcan` you can run the real thing:
 
 ```sh
 sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
-python host/sim/cli.py --interface socketcan --channel vcan0 --bench 4 &
-anv_can_gateway --interface vcan0 --bridge-socket /tmp/gw.sock &
+anv-bench-gateway --interface vcan0 --socket /tmp/gw.sock &
 ANV_DASH_GATEWAY_SOCKET=/tmp/gw.sock ANV_DASH_STATIC=dashboard/frontend/dist ANV_DASH_TRUST_LOCALHOST=1 \
   python -m anv_dashboard   # from dashboard/backend; then open http://localhost:8080/?kiosk
 ```
+
+Nodes then come from real boards on a USB-CAN adapter, or a v2 simulator once `lib/sim` lands.

@@ -198,13 +198,15 @@ EVENT_TEXT = {
     "ROLE_CHANGED": "This host is now {role}",
     "ESTOP_SEEN": "E-stop",
     "ESTOP_RELEASED": "E-stop released",
+    "NODE_EVENT": "{name}: {event}",
 }
 ROLE_NAMES = {0: "booting", 1: "standby", 2: "master", 3: "observer"}
-EVENT_KIND = {"NODE_ALIVE": "ok", "NODE_ID_ASSIGNED": "ok", "ESTOP_RELEASED": "ok", "NODE_REBOOTED": "warn"}
+EVENT_KIND = {"NODE_ALIVE": "ok", "NODE_ID_ASSIGNED": "ok", "ESTOP_RELEASED": "ok", "NODE_REBOOTED": "warn",
+              "NODE_EVENT": "warn"}
 
 
 def event_text(e: dict[str, Any]) -> str:
-    fields = {**e, "role": ROLE_NAMES.get(e.get("role", -1), "?"), "mac": e.get("mac", "?")}
+    fields = {**e, "role": ROLE_NAMES.get(e.get("role", -1), "?"), "mac": e.get("mac", "?"), "event": e.get("event", "?")}
     return EVENT_TEXT.get(e["type"], e["type"]).format(**fields)
 
 
@@ -221,8 +223,10 @@ def bench_view(st: dict[str, Any]) -> dict[str, Any]:
                 "node_id": n["node_id"],
                 "name": n["name"],
                 "hw": n.get("hw_name") or "",
+                "type": n.get("type_name") or "",
                 "mac": n.get("mac"),
-                "state": NODE_STATES.get(n["state"], str(n["state"])),
+                # The v2 gateway names states itself (IDLE, ARMED, UPDATING, ...); the old one sends numbers.
+                "state": n.get("state_name") or NODE_STATES.get(n["state"], str(n["state"])),
                 "alive": n["alive"],
                 "age_ms": None if n["age_ms"] is None else round(n["age_ms"]),
                 "uptime_s": n["uptime_s"] if n["has_hb"] else None,
@@ -231,6 +235,7 @@ def bench_view(st: dict[str, Any]) -> dict[str, Any]:
                 "tec": n["tec"],
                 "rec": n["rec"],
                 "sensors": n.get("sensors", [])[:4],
+                "values": n.get("values") or [],
                 "rx_count": n.get("rx_count", 0),
                 "health": health,
                 "reasons": reasons,

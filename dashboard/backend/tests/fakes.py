@@ -83,6 +83,17 @@ class FakeBridge:
     async def send_text(self, node_id: int, text: str) -> dict[str, Any]:
         return await self._cmd("send_text", (node_id, text))
 
+    async def flash(self, node_id: int, path: str) -> dict[str, Any]:
+        """Like the v2 gateway: accept, then report the flash as done in the state."""
+        self.calls.append(("flash", (node_id, path)))
+        if self.state_value is not None:
+            self.state_value["flash"] = {"node_id": node_id, "file": path, "phase": "done", "pct": 100.0,
+                                         "msg": f"node {node_id} restarted with the new image", "state": "done"}
+        return {"ok": True, "result": "ok"}
+
+    async def flash_cancel(self) -> dict[str, Any]:
+        return await self._cmd("flash_cancel")
+
     async def close(self) -> None:
         pass
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,6 +46,13 @@ class Settings:
     tools_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parents[3] / "host" / "tools")
     firmware_dir: Path = field(default_factory=lambda: Path(tempfile.gettempdir()) / "anv-firmware")
     max_firmware_bytes: int = 2 * 1024 * 1024
+    # "gateway": the v2 bench gateway flashes (and .cpp uploads are built here); "anv_flash": the old
+    # 11-bit tool. Building needs arduino-cli with the esp32 core.
+    flash_mode: str = "gateway"
+    repo_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parents[3])
+    arduino_cli: str = field(default_factory=lambda: shutil.which("arduino-cli")
+                             or str(Path.home() / ".local" / "bin" / "arduino-cli"))
+    build_cache_dir: Path = field(default_factory=lambda: Path.home() / ".cache" / "anveshak" / "builds")
 
     can_bitrate: int = 500_000
     avg_frame_bits: float = (
@@ -62,6 +70,10 @@ class Settings:
         s.trust_localhost = e.get("ANV_DASH_TRUST_LOCALHOST", "").lower() in ("1", "true", "yes", "on")
         s.host = e.get("ANV_DASH_HOST", s.host)
         s.can_interface = e.get("ANV_DASH_CAN_INTERFACE", s.can_interface)
+        s.flash_mode = e.get("ANV_DASH_FLASH_MODE", s.flash_mode)
+        s.arduino_cli = e.get("ANV_DASH_ARDUINO_CLI", s.arduino_cli)
+        if e.get("ANV_DASH_BUILD_CACHE"):
+            s.build_cache_dir = Path(e["ANV_DASH_BUILD_CACHE"])
         s.port = int(e.get("ANV_DASH_PORT", s.port))
         s.max_wheel_speed = float(e.get("ANV_DASH_MAX_WHEEL_SPEED", s.max_wheel_speed))
         s.default_cap = min(
