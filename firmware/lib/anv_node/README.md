@@ -35,6 +35,43 @@ States: `boot` → `unassigned` → `idle` ⇄ `armed`; `estop` and `fault` latc
 - **Actions**: SERVICE `action` runs `on_action` (with `disarmed_only` and the argument's type checked).
 - Also SERVICE `info` pages and the 16-character `label`.
 
+## Firmware updates over CAN (`anv_node_ota.h`)
+
+BEGIN/DATA/END/ABORT on the schema's `transfer` port (service `ota`), ACKed one message at a
+time; see `anv_node_ota.h` for the exact byte layout and `host/anv_can`'s `anv-flash` for the
+host side. Only accepted while the node isn't armed; BEGIN is refused if `type_id` or `chip`
+doesn't match. The CRC-32 in BEGIN is checked against what was actually received before END is
+allowed to apply anything, so a corrupted or interrupted transfer never touches the running
+image. Node state is `updating` for the duration (E-stop and faults cancel it).
+
+Flash access is behind `cfg.ota` (`anv_node_ota_backend_t`): `begin`/`write`/`commit`/`abort` to
+move the image, `confirm`/`rollback_and_reboot` for the probation below. `NULL`: OTA always
+answers `NO_BACKEND`. `anv_node_ota_esp32.h` wires it to `esp_ota_ops`; off the ESP32 it compiles
+to nothing, so it can always be listed as a source file.
+
+**Rollback** doesn't depend on ESP-IDF's own app-rollback feature: anv_node keeps its own
+two-state marker in `cfg.storage`. After a committed image's first boot, the marker says so; if
+it boots *again* still carrying that marker, the previous boot never confirmed itself (it
+crashed, or someone power-cycled it) and `rollback_and_reboot()` runs immediately. An image
+confirms itself on its own `ANV_NODE_OTA_CONFIRM_MS` after start (no application code needed) —
+or sooner, if it reaches that point by surviving at all; there is nothing explicit to call.
+
+## Diagnostics (`anv_node_diag.h`)
+
+`anv_node_event(node, code, detail)` broadcasts the protocol's `event` message, appends it to a
+small black box (the last `ANV_NODE_DIAG_LOG_CAP` events, persisted in `cfg.storage` so it
+survives a reboot) and applies the `event_rate_limit` setting (same code within
+`1000 / event_rate_limit` ms: dropped, bus and black box both). `anv_node_event_clear()` is the
+same with the `cleared` bit set, never rate-limited. The runtime raises a few of these itself
+(`params_corrupt`, `storage_write_fail`, the OTA ones above); everything else is the
+application's call. A host reads the black box with the `log` transfer_service (`anv-flash log`,
+or any ISO-TP client) — one request, one reply, no chunking (the box is small enough to fit one
+transfer).
+
+Debug levels are a plain setting (`debug_level`, parameter `0xF003`) plus the `debug_level`
+message (leader only) to change it with an optional auto-off timer; both are handled directly by
+`anv_node.c`, not this file.
+
 ## Using it
 
 ```c
@@ -50,6 +87,7 @@ cfg.link = &can_link;                 /* started anv_link_t; the node sets its f
 memcpy(cfg.mac, mac, 6);
 cfg.storage = anv_node_nvs_ops();     /* anv_node_esp32.h; anv_node_memstore_ops() in tests */
 cfg.storage_ctx = &nvs;
+cfg.ota = anv_node_ota_esp32_backend(); /* anv_node_ota_esp32.h; NULL refuses OTA (NO_BACKEND) */
 cfg.outputs_off = motors_off;         /* required */
 cfg.on_command = on_setpoint;
 cfg.fill_stream = fill_feedback;
@@ -86,6 +124,7 @@ Same folder for all three, like `anv_link` and `anv_proto`:
 
 On Linux, `firmware/CMakeLists.txt` builds it and runs `firmware/lib/tests/test_node_*` on the
 loopback bus: ID assignment, settings (read, write, limits, save, restore), stream rates, the
-watchdog, E-stop, leader change and loss, faults and the hooks.
-
-Not here yet (L5): firmware updates over CAN and event frames (`event` port).
+watchdog, E-stop, leader change and loss, faults and the hooks. `test_ota.c` and `test_diag.c`
+cover image transfer, a corrupted image being rejected, rollback after an unconfirmed reboot,
+event rate limiting, the black box surviving a reboot, and the log transfer — all against a fake
+OTA backend (`node_harness.h`'s `h_ota_ops()`), since there's no real flash on Linux.

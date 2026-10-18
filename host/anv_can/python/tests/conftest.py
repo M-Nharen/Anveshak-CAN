@@ -29,6 +29,10 @@ class FakeNode:
         self.commands = 0
         self.actions: list[tuple[int, int]] = []
         self.saves = 0
+        self.debug_level = 0
+        self.debug_sets = 0
+        self.info_pages = {"chip": 1, "fw_build": 0, "type_id": self.t.type_id,
+                           "schema_hash": self.t.schema_hash16}
         self.params: dict[int, int] = {}
         for p in list(self.t.params) + list(self.s.protocol.params):
             self.params[p.index] = self._wire(p.type, p.default or 0)
@@ -48,6 +52,12 @@ class FakeNode:
     def stop(self) -> None:
         self._run = False
         self._th.join()
+
+    def send_event(self, code: int, detail: int = 0, severity: int = 0, cleared: bool = False,
+                   seq: int = 1) -> None:
+        self._send(self.s.protocol.message("event"), {
+            "severity": severity, "cleared": cleared, "code": code, "seq": seq, "detail": detail,
+            "uptime_s": 5}, 0, raw=False)
 
     def _send(self, msg: anv_can.Message, values: dict[str, Any], dst: int,
               raw: bool = True) -> None:
@@ -106,6 +116,8 @@ class FakeNode:
                 self.armed, self._last_cmd = True, time.monotonic()
             elif v["command"] == _label(self.s, "nmt_command", "disarm"):
                 self.armed = False
+        elif name == "debug_level" and to_me and src == self.leader:
+            self.debug_level, self.debug_sets = v["level"], self.debug_sets + 1
         elif name == "id_assign" and not self.id and dst == self.s.node_ids["unassigned"]:
             if bytes(v["mac"]) == self.mac.to_bytes(6, "big"):
                 self.id = v["node_id"]
@@ -137,6 +149,13 @@ class FakeNode:
             self.rates[index] = v["value"]
         elif op == ops["action"]:
             self.actions.append((index, v["value"]))
+        elif op == ops["info"]:
+            pages = self.s.protocol.enums["info_page"]
+            name = next((n for n, i in pages.items() if i == index), None)
+            if name is None or name not in self.info_pages:
+                status = "bad_index"
+            else:
+                v["value"] = self.info_pages[name]
         else:
             status = "bad_op"
         v["status"] = _label(self.s, "service_status", status)

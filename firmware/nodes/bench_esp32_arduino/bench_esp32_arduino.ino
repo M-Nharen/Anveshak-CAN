@@ -14,6 +14,7 @@
 #include "anv_link_twai.h"
 #include "anv_node.h"
 #include "anv_node_esp32.h"
+#include "anv_node_ota_esp32.h"
 
 #include "board_pins.h"
 #include "led.h"
@@ -221,6 +222,7 @@ void setup() {
   cfg.storage_ctx = &s_nvs;
   anv_node_esp32_identity(&cfg, &s_nvs);
   cfg.info.fw_build = build_id();
+  cfg.ota = anv_node_ota_esp32_backend();  // flashing over CAN: schema's `transfer` port, service `ota`
   cfg.save_assigned_id = true;  // a board keeps its ID across reboots; `forget` asks again
   cfg.outputs_off = hook_outputs_off;
   cfg.setup = hook_setup;

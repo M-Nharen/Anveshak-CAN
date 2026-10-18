@@ -15,6 +15,7 @@ test = ["pytest>=7"]
 [project.scripts]
 anv-can = "anv_can.cli:main"
 anv-host = "anv_can.host_cli:main"
+anv-flash = "anv_can.flash_cli:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."

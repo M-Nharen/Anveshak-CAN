@@ -117,6 +117,41 @@ def test_lead_arm_command_estop(bus, schema):
     b.stop()
 
 
+def test_set_debug_level(bus, schema):
+    a = make_host(bus, schema, host_id=1)
+    b = make_host(bus, schema, host_id=2)
+    a.start()
+    b.start()
+    n = FakeNode(bus, schema, "motor_controller", 22)
+    assert a.wait_for_node(22, 1000)
+
+    with pytest.raises(anv_can.HostError, match="not_leader"):
+        b.set_debug_level(22, 2)
+    a.request_lead()
+    assert eventually(lambda: n.leader == 1)
+    a.set_debug_level(22, 2, timeout_s=30)
+    assert eventually(lambda: n.debug_level == 2 and n.debug_sets == 1)
+    n.stop()
+    a.stop()
+    b.stop()
+
+
+def test_event_callback(bus, schema):
+    h = make_host(bus, schema)
+    events = []
+    h.set_callbacks(event=lambda e: events.append(e))
+    h.start()
+    n = FakeNode(bus, schema, "motor_controller", 23)
+    assert h.wait_for_node(23, 1000)
+    n.send_event(0x0101, detail=42, severity=1)  # can_error_passive, warning
+    assert eventually(lambda: len(events) == 1)
+    e = events[0]
+    assert e["node"] == 23 and e["code"] == 0x0101 and e["detail"] == 42
+    assert e["name"] == "can_error_passive" and e["severity"] == "warning" and not e["cleared"]
+    n.stop()
+    h.stop()
+
+
 def test_id_assignment(bus, schema, tmp_path):
     table = tmp_path / "ids.txt"
     h = make_host(bus, schema, allocator="auto", id_first=40, id_last=45, id_table=str(table))

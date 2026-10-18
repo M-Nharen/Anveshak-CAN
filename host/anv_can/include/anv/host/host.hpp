@@ -180,6 +180,12 @@ class Host {
   Status estop_release();            // leader only
   bool estop_latched() const;
 
+  // --- diagnostics -----------------------------------------------------------------------
+  // Turn debugging on node `node` (0 = every node) up or down; leader only, like nmt. level is
+  // the protocol's 0-3; categories is a bitmask the node type defines meaning for (0: all);
+  // timeout_s: 0 = until changed.
+  Status set_debug_level(uint8_t node, uint8_t level, uint16_t categories = 0, uint16_t timeout_s = 0);
+
   const Schema& schema() const { return *schema_; }
   const HostConfig& config() const { return cfg_; }
 
@@ -223,7 +229,7 @@ class Host {
 
   // Protocol messages, looked up by name once.
   const Message *m_estop_, *m_estop_release_, *m_sync_, *m_nmt_, *m_host_hb_, *m_lead_req_, *m_hb_,
-      *m_id_req_, *m_id_assign_, *m_service_, *m_event_;
+      *m_id_req_, *m_id_assign_, *m_service_, *m_event_, *m_debug_level_;
 
   mutable std::mutex mu_;
   std::condition_variable cv_;

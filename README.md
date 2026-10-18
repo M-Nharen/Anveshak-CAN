@@ -23,11 +23,12 @@ fixed node counts, wheel counts or node types). The rover becomes configuration 
             apps (later): gateway daemon, dashboard, ROS 2 package, drive controller, ...
 ───────────────────────────────────────────────────────────────────────────────────
 FIRMWARE (ESP32, C)                       HOST (C++ and Python)
-  anv_node     node runtime, objects        anv_host     discovery, registry, leadership,
-  anv_ota      flashing over CAN                         parameter/command client, streams
-  anv_diag     events, black box, debug     anv_flash    flash any node or a whole role
-  anv_proto    29-bit IDs, ISO-TP, codecs   anv_proto    same, generated from the same schema
-  anv_link     CAN driver: TWAI, test       anv_link     SocketCAN, virtual, test
+  anv_node     node runtime, objects,       anv_host     discovery, registry, leadership,
+               OTA (anv_node_ota.h) and                  parameter/command client, streams
+               diagnostics (anv_node_diag.h)
+  anv_proto    29-bit IDs, ISO-TP, codecs    anv_flash    flash any node, a type or a list
+  anv_link     CAN driver: TWAI, test        anv_proto    same, generated from the same schema
+                                             anv_link     SocketCAN, virtual, test
 ───────────────────────────────────────────────────────────────────────────────────
               schema/  node types in YAML → generated C, C++, Python and DBC
 ```
@@ -47,5 +48,27 @@ FIRMWARE (ESP32, C)                       HOST (C++ and Python)
 - **The ESP32 node sketch**: `firmware/nodes/bench_esp32_arduino/README.md`.
 - **No hardware**: `host/sim` simulates nodes on a virtual bus; see "Without any hardware" in the
   bench README.
+- **Flashing and diagnostics** (`anv-flash`, `anv-host`): `host/anv_can/README.md`.
+
+## Bench demo (the v2 libraries end to end)
+
+On the RPi bench with at least two ESP32s running the new node library (`firmware/lib`, not the
+old `defs/`-based apps):
+
+- [ ] Both nodes get IDs automatically and are listed by `anv-host list` / `anv-flash list`
+- [ ] Each node reports its type and the host matches it to the schema (version check passes)
+- [ ] Read and change a setting live (`anv-host get` / `set`); it survives a node reboot
+- [ ] Change a stream rate live (`anv-host rate`) and see telemetry rate change
+- [ ] Arm, send a command, stop sending (`anv-host arm` / `command`): node disarms within the
+  watchdog timeout
+- [ ] E-stop (`anv-host estop`) disarms every node immediately
+- [ ] Reflash one node over CAN (`anv-flash flash`); a deliberately broken image rolls back
+  on its own
+- [ ] An error event raised on a node shows up on the host (`anv-host events`), and its black
+  box (`anv-flash log`) still has it after a reboot
+
+Everything above except the CAN hardware itself can be exercised on `vcan0` with `host/sim` or a
+fake node, the same way the automated tests in `firmware/lib/tests` and
+`host/anv_can/python/tests` do.
 
 Earlier task prompts (the two-person P0/A/B plan) are in `prompts/v1/`.

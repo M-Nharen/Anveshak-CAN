@@ -49,6 +49,8 @@ class FakeNode {
   std::atomic<int> commands{0}, actions{0}, saves{0}, telemetry_sent{0};
   std::atomic<uint32_t> last_action_arg{0};
   std::atomic<uint8_t> leader{0};
+  std::atomic<int> debug_sets{0};
+  std::atomic<uint8_t> debug_level{0};
   uint32_t param(uint16_t index) {
     std::lock_guard<std::mutex> lk(mu_);
     return params_[index];
@@ -178,6 +180,9 @@ class FakeNode {
         last_cmd = Clock::now();  // the watchdog runs from the moment of arming
       }
       if (c == label("nmt_command", "disarm")) disarm();
+    } else if (m->name == "debug_level" && to_me && idp.src == leader) {
+      debug_level = static_cast<uint8_t>(get(v, "level"));
+      ++debug_sets;
     } else if (m->name == "id_assign" && id_ == 0 && idp.dst == s_.node_ids.unassigned) {
       uint8_t mac[6];
       for (size_t i = 0; i < 6; ++i) mac[i] = static_cast<uint8_t>(get(v, "mac", i));

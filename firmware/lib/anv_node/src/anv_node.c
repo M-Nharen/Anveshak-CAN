@@ -85,6 +85,8 @@ static void set_state(anv_node_t *n, bool armed)
         s = ANV_NODE_STATE_ESTOP;
     } else if (n->fault_latched) {
         s = ANV_NODE_STATE_FAULT;
+    } else if (n->ota.phase == ANV_NODE_OTA_RECEIVING) {
+        s = ANV_NODE_STATE_UPDATING;
     } else if (armed) {
         s = ANV_NODE_STATE_ARMED;
     } else {
@@ -111,11 +113,53 @@ static void disarm(anv_node_t *n)
     set_state(n, false);
 }
 
+void anv_node_i_refresh_state(anv_node_t *n)
+{
+    set_state(n, anv_node_i_armed(n));
+}
+
 static void apply_filters(anv_node_t *n)
 {
     anv_link_filter_t f[2];
     const uint8_t count = anv_proto_node_filters(n->id, f);
     (void)anv_link_set_filters(n->cfg.link, f, count);
+}
+
+static void on_transfer_rx(void *user, const uint8_t *data, uint16_t len)
+{
+    anv_node_t *n = (anv_node_t *)user;
+    if (len < 1u) {
+        return;
+    }
+    const anv_node_id_t src = n->transfer.cfg.peer;
+    if (data[0] == (uint8_t)ANV_TRANSFER_SERVICE_OTA) {
+        anv_node_i_ota_handle(n, src, data + 1, (uint16_t)(len - 1u));
+    } else if (data[0] == (uint8_t)ANV_TRANSFER_SERVICE_LOG) {
+        anv_node_i_diag_handle(n, src, data + 1, (uint16_t)(len - 1u));
+    }
+}
+
+static bool transfer_send(void *user, const anv_link_frame_t *frame)
+{
+    anv_node_t *n = (anv_node_t *)user;
+    anv_link_frame_t f = *frame;
+    return anv_link_send(n->cfg.link, &f) == ANV_LINK_OK;
+}
+
+/* (Re)bind the shared transfer channel to this node's own ID as its sender. Called whenever
+ * the ID changes; any session in progress is dropped (an unassigned node can't run one). */
+static void rebind_transfer(anv_node_t *n, anv_node_id_t id)
+{
+    anv_isotp_config_t ic;
+    anv_isotp_config_default(&ic);
+    ic.self = id;
+    ic.peer = ANV_NODE_BROADCAST; /* nobody yet; the next SF/FF binds it to its sender */
+    ic.rx_buf = n->transfer_rx_buf;
+    ic.rx_buf_size = (uint16_t)sizeof n->transfer_rx_buf;
+    ic.send = transfer_send;
+    ic.on_rx = on_transfer_rx;
+    ic.user = n;
+    (void)anv_isotp_init(&n->transfer, &ic);
 }
 
 static void use_id(anv_node_t *n, anv_node_id_t id)
@@ -125,6 +169,7 @@ static void use_id(anv_node_t *n, anv_node_id_t id)
         return;
     }
     apply_filters(n);
+    rebind_transfer(n, id);
     if (id == ANV_NODE_UNASSIGNED) {
         n->id_request_next_ms = n->now_ms + ANV_NODE_ID_REQUEST_FIRST_MS + next_random(n) % ANV_NODE_ID_REQUEST_JITTER_MS;
     } else {
@@ -247,12 +292,23 @@ static bool from_leader(const anv_node_t *n, anv_node_id_t src)
 /* ------------------------------------------------------------------------------------------ */
 /* protocol messages                                                                           */
 
+static void abort_ota_session(anv_node_t *n)
+{
+    if (n->ota.phase == ANV_NODE_OTA_RECEIVING) {
+        if (n->cfg.ota != NULL) {
+            n->cfg.ota->abort(n->cfg.ota_ctx);
+        }
+        n->ota.phase = ANV_NODE_OTA_IDLE;
+    }
+}
+
 static void latch_estop(anv_node_t *n)
 {
     if (!n->estop_latched) {
         n->stats.estops++;
     }
     n->estop_latched = true;
+    abort_ota_session(n);
     disarm(n);
 }
 
@@ -271,6 +327,7 @@ void anv_node_set_fault(anv_node_t *n, bool active)
     n->fault_active = active;
     if (active) {
         n->fault_latched = true;
+        abort_ota_session(n);
         disarm(n);
     }
 }
@@ -410,6 +467,30 @@ static void on_debug_level(anv_node_t *n, const anv_link_frame_t *f)
 }
 
 /* ------------------------------------------------------------------------------------------ */
+/* the transfer port: OTA and the log dump share one ISO-TP channel                           */
+
+static bool is_new_session_frame(const anv_link_frame_t *f)
+{
+    if (f->len < 1u) {
+        return false;
+    }
+    const uint8_t pci = (uint8_t)(f->data[0] >> 4);
+    return pci == 0u /* single frame */ || pci == 1u /* first frame */;
+}
+
+static void handle_transfer_frame(anv_node_t *n, const anv_link_frame_t *f)
+{
+    const anv_node_id_t src = anv_id_src(f->id);
+    if (!anv_isotp_rx_busy(&n->transfer) && !anv_isotp_tx_busy(&n->transfer) &&
+        n->transfer.cfg.peer != src && is_new_session_frame(f)) {
+        anv_isotp_config_t ic = n->transfer.cfg;
+        ic.peer = src;
+        (void)anv_isotp_init(&n->transfer, &ic);
+    }
+    (void)anv_isotp_on_frame(&n->transfer, f, n->now_ms * 1000u);
+}
+
+/* ------------------------------------------------------------------------------------------ */
 /* frame dispatch                                                                             */
 
 /* True if the runtime handled the frame. */
@@ -456,6 +537,12 @@ static bool on_protocol_frame(anv_node_t *n, const anv_link_frame_t *f)
     case ANV_SERVICE_PORT:
         if (assigned && dst == n->id) {
             anv_node_i_on_service(n, src, f);
+            return true;
+        }
+        return false;
+    case ANV_TRANSFER_PORT:
+        if (assigned && dst == n->id) {
+            handle_transfer_frame(n, f);
             return true;
         }
         return false;
@@ -571,6 +658,7 @@ bool anv_node_init(anv_node_t *n, const anv_node_config_t *cfg)
     }
     anv_node_i_load_defaults(n);
     anv_node_i_load_saved(n);
+    anv_node_i_diag_load(n);
 
     if (cfg->fixed_id != 0u) {
         n->id = cfg->fixed_id;
@@ -598,6 +686,11 @@ void anv_node_begin(anv_node_t *n, uint32_t now_ms)
     n->cfg.outputs_off(n, n->cfg.user); /* off by default, whatever the hardware came up as */
     n->begun = true;
     use_id(n, n->id);
+    anv_node_i_ota_boot_check(n);
+    if (n->params_corrupt) {
+        n->params_corrupt = false;
+        anv_node_event(n, ANV_EVENT_PARAMS_CORRUPT, 0);
+    }
     if (n->cfg.setup != NULL) {
         n->cfg.setup(n, n->cfg.user);
     }
@@ -621,6 +714,8 @@ void anv_node_poll(anv_node_t *n, uint32_t now_ms)
     }
 
     check_timers(n);
+    anv_isotp_poll(&n->transfer, now_ms * 1000u);
+    anv_node_i_ota_poll(n);
 
     if (n->id == ANV_NODE_UNASSIGNED) {
         if (due(now_ms, n->id_request_next_ms)) {
