@@ -9,6 +9,7 @@
 
 #include "esp_attr.h"
 #include "esp_twai_onchip.h"
+#include "freertos/task.h"
 
 #include "anv_link_twai_filter.h"
 
@@ -73,6 +74,47 @@ static int apply_filters(anv_twai_t *t, const anv_link_filter_t *filters, uint8_
     return twai_node_config_mask_filter(t->node, 0, &mf) == ESP_OK ? ANV_LINK_OK : ANV_LINK_ERR_BACKEND;
 }
 
+/* Creates, configures and enables the controller from the settings kept in `t`. */
+static int create_node(anv_twai_t *t)
+{
+    twai_onchip_node_config_t nc = {
+        .io_cfg =
+            {
+                .tx = (gpio_num_t)t->tx_gpio,
+                .rx = (gpio_num_t)t->rx_gpio,
+                .quanta_clk_out = GPIO_NUM_NC,
+                .bus_off_indicator = GPIO_NUM_NC,
+            },
+        /* 80 % sample point, as on every other device on the bus (docs/architecture.md). */
+        .bit_timing = {.bitrate = t->bitrate, .sp_permill = 800},
+        .fail_retry_cnt = -1, /* keep retrying until ACKed; bus-off recovery handles a dead bus */
+        .tx_queue_depth = ANV_TWAI_TX_SLOTS,
+    };
+    if (twai_new_node_onchip(&nc, &t->node) != ESP_OK) {
+        t->node = NULL;
+        return ANV_LINK_ERR_BACKEND;
+    }
+    twai_event_callbacks_t cbs = {
+        .on_tx_done = on_tx_done,
+        .on_rx_done = on_rx_done,
+    };
+    if (twai_node_register_event_callbacks(t->node, &cbs, t) != ESP_OK ||
+        apply_filters(t, t->filters, t->n_filters) != ANV_LINK_OK || twai_node_enable(t->node) != ESP_OK) {
+        (void)twai_node_delete(t->node);
+        t->node = NULL;
+        return ANV_LINK_ERR_BACKEND;
+    }
+    return ANV_LINK_OK;
+}
+
+static void keep_filters(anv_twai_t *t, const anv_link_filter_t *filters, uint8_t n)
+{
+    t->n_filters = n > ANV_LINK_MAX_FILTERS ? ANV_LINK_MAX_FILTERS : n;
+    for (uint8_t i = 0; i < t->n_filters; i++) {
+        t->filters[i] = filters[i];
+    }
+}
+
 static int twai_start(void *ctx, const anv_link_config_t *cfg)
 {
     anv_twai_t *t = (anv_twai_t *)ctx;
@@ -92,35 +134,10 @@ static int twai_start(void *ctx, const anv_link_config_t *cfg)
     t->tx_failed = 0;
     t->rx_overflow = 0;
     t->was_bus_off = false;
-
-    twai_onchip_node_config_t nc = {
-        .io_cfg =
-            {
-                .tx = (gpio_num_t)t->tx_gpio,
-                .rx = (gpio_num_t)t->rx_gpio,
-                .quanta_clk_out = GPIO_NUM_NC,
-                .bus_off_indicator = GPIO_NUM_NC,
-            },
-        /* 80 % sample point, as on every other device on the bus (docs/architecture.md). */
-        .bit_timing = {.bitrate = cfg->bitrate, .sp_permill = 800},
-        .fail_retry_cnt = -1, /* keep retrying until ACKed; bus-off recovery handles a dead bus */
-        .tx_queue_depth = ANV_TWAI_TX_SLOTS,
-    };
-    if (twai_new_node_onchip(&nc, &t->node) != ESP_OK) {
-        t->node = NULL;
-        return ANV_LINK_ERR_BACKEND;
-    }
-    twai_event_callbacks_t cbs = {
-        .on_tx_done = on_tx_done,
-        .on_rx_done = on_rx_done,
-    };
-    if (twai_node_register_event_callbacks(t->node, &cbs, t) != ESP_OK ||
-        apply_filters(t, cfg->filters, cfg->n_filters) != ANV_LINK_OK || twai_node_enable(t->node) != ESP_OK) {
-        (void)twai_node_delete(t->node);
-        t->node = NULL;
-        return ANV_LINK_ERR_BACKEND;
-    }
-    return ANV_LINK_OK;
+    t->restarts = 0;
+    t->bitrate = cfg->bitrate;
+    keep_filters(t, cfg->filters, cfg->n_filters);
+    return create_node(t);
 }
 
 static int twai_stop(void *ctx)
@@ -141,14 +158,15 @@ static int twai_stop(void *ctx)
 static int twai_set_filters(void *ctx, const anv_link_filter_t *filters, uint8_t n)
 {
     anv_twai_t *t = (anv_twai_t *)ctx;
-    if (t->node == NULL) {
-        return ANV_LINK_ERR_NOT_READY;
+    keep_filters(t, filters, n); /* a controller rebuilt after bus-off gets these too */
+    if (t->node == NULL || t->was_bus_off) {
+        return ANV_LINK_OK; /* applied when the controller comes back (twai_recover) */
     }
     if (twai_node_disable(t->node) != ESP_OK) {
         return ANV_LINK_ERR_BACKEND;
     }
     clear_in_flight(t);
-    const int rc = apply_filters(t, filters, n);
+    const int rc = apply_filters(t, t->filters, t->n_filters);
     if (twai_node_enable(t->node) != ESP_OK) {
         return ANV_LINK_ERR_BACKEND;
     }
@@ -199,7 +217,17 @@ static int twai_get_status(void *ctx, anv_link_hw_status_t *status)
 {
     anv_twai_t *t = (anv_twai_t *)ctx;
     twai_node_status_t st;
-    if (t->node == NULL || twai_node_get_info(t->node, &st, NULL) != ESP_OK) {
+    if (t->node == NULL) {
+        /* A rebuild after bus-off failed: stay bus-off so anv_link keeps asking to recover. */
+        status->tec = 255u;
+        status->rec = 0u;
+        status->state = ANV_LINK_STATE_BUS_OFF;
+        t->was_bus_off = true;
+        status->rx_overflow = t->rx_overflow;
+        status->tx_failed = t->tx_failed;
+        return ANV_LINK_OK;
+    }
+    if (twai_node_get_info(t->node, &st, NULL) != ESP_OK) {
         return ANV_LINK_ERR_BACKEND;
     }
     status->tec = (uint8_t)(st.tx_error_count > 255u ? 255u : st.tx_error_count);
@@ -207,7 +235,8 @@ static int twai_get_status(void *ctx, anv_link_hw_status_t *status)
     if (st.state == TWAI_ERROR_BUS_OFF) {
         status->state = ANV_LINK_STATE_BUS_OFF;
         if (!t->was_bus_off) {
-            clear_in_flight(t); /* the driver drops queued frames on bus-off */
+            clear_in_flight(t);
+            t->bus_off_since = xTaskGetTickCount();
         }
     } else if (st.state == TWAI_ERROR_PASSIVE) {
         status->state = ANV_LINK_STATE_PASSIVE;
@@ -220,16 +249,36 @@ static int twai_get_status(void *ctx, anv_link_hw_status_t *status)
     return ANV_LINK_OK;
 }
 
-/* TWAI never leaves bus-off by itself. twai_node_recover() starts the 128 x 11 recessive-bit
- * wait; calling it again while that is running just returns an error, which is fine. */
+/* TWAI never leaves bus-off by itself. ESP-IDF's twai_node_recover() is not used: on the
+ * classic ESP32 (WROOM) a controller recovered that way could report error-active and still
+ * neither send nor acknowledge anything, which then pushed every other node on the bus into
+ * bus-off too. Instead the controller is deleted and created again from the settings it was
+ * started with, after ANV_TWAI_RESTART_HOLDOFF_MS of bus-off. A fresh controller starts
+ * error-active with both counters at zero, like after a reset. */
 static int twai_recover(void *ctx)
 {
     anv_twai_t *t = (anv_twai_t *)ctx;
-    if (t->node == NULL) {
-        return ANV_LINK_ERR_NOT_READY;
+    if (t->node != NULL) {
+        twai_node_status_t st;
+        if (twai_node_get_info(t->node, &st, NULL) != ESP_OK || st.state != TWAI_ERROR_BUS_OFF) {
+            return ANV_LINK_OK; /* not bus-off (any more): nothing to do */
+        }
+        if ((TickType_t)(xTaskGetTickCount() - t->bus_off_since) < pdMS_TO_TICKS(ANV_TWAI_RESTART_HOLDOFF_MS)) {
+            return ANV_LINK_OK; /* too soon; anv_link asks again after recover_retry_ms */
+        }
+        if (twai_node_delete(t->node) != ESP_OK) {
+            return ANV_LINK_ERR_BACKEND;
+        }
+        t->node = NULL;
     }
-    (void)twai_node_recover(t->node);
-    return ANV_LINK_OK;
+    clear_in_flight(t);
+    t->tx_head = 0;
+    const int rc = create_node(t);
+    if (rc == ANV_LINK_OK) {
+        t->restarts++;
+        t->was_bus_off = false;
+    }
+    return rc;
 }
 
 static const anv_link_ops_t s_ops = {

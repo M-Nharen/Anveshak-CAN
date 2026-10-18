@@ -42,7 +42,21 @@ typedef struct {
     volatile uint32_t tx_failed;
     volatile uint32_t rx_overflow; /* RX queue was full */
     bool was_bus_off;
+
+    /* Bus-off recovery rebuilds the controller from scratch (see twai_recover), so the backend
+     * keeps what it was started with. */
+    uint32_t bitrate;
+    anv_link_filter_t filters[ANV_LINK_MAX_FILTERS];
+    uint8_t n_filters;
+    TickType_t bus_off_since;
+    uint32_t restarts; /* times the controller was rebuilt after bus-off */
 } anv_twai_t;
+
+/* How long a node stays bus-off before the controller is rebuilt. anv_link asks for recovery as
+ * soon as it sees bus-off and then every recover_retry_ms (1 s by default), so in practice a
+ * node comes back about a second after going bus-off: long enough that a node with a real fault
+ * doesn't flood the bus, short enough that a node that only lost its partners rejoins quickly. */
+#define ANV_TWAI_RESTART_HOLDOFF_MS 200u
 
 void anv_twai_setup(anv_twai_t *twai, int tx_gpio, int rx_gpio);
 const anv_link_ops_t *anv_twai_ops(void);

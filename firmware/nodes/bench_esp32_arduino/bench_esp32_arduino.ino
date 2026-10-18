@@ -139,10 +139,11 @@ static void print_status() {
     default: bus = "UNKNOWN"; break;
   }
   const anv_link_stats_t* ls = anv_link_stats(&s_link);
-  Serial.printf("  bus=%s tec=%u rec=%u buserr=%lu  tx_ok=%lu rx=%lu rx_drop=%lu\n", bus,
+  Serial.printf("  bus=%s tec=%u rec=%u buserr=%lu  tx_ok=%lu rx=%lu rx_drop=%lu restarts=%lu\n", bus,
                 static_cast<unsigned>(st.tx_error_count), static_cast<unsigned>(st.rx_error_count),
                 static_cast<unsigned long>(rec.bus_err_num), static_cast<unsigned long>(s_twai.tx_ok),
-                static_cast<unsigned long>(ls->rx_frames), static_cast<unsigned long>(ls->rx_overflow));
+                static_cast<unsigned long>(ls->rx_frames), static_cast<unsigned long>(ls->rx_overflow),
+                static_cast<unsigned long>(s_twai.restarts));
 }
 
 static void handle_command(char* line) {
