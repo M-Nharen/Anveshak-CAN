@@ -11,7 +11,9 @@ repeat:
 - **counters**: frames sent, refused, failed, received, filtered, lost to overflow, bus-offs, recoveries
 - **bus-off recovery**: `anv_link_poll()` notices bus-off and starts recovery by itself (retrying every
   `recover_retry_ms`), and returns `ANV_LINK_EV_*` flags so the node can raise the protocol's
-  `can_*` events
+  `can_*` events. On the ESP32 the TWAI backend recovers by rebuilding the controller (after
+  `ANV_TWAI_RESTART_HOLDOFF_MS` of bus-off), not with ESP-IDF's in-place recovery, which on the
+  classic ESP32 could leave a node that reports error-active but neither sends nor ACKs
 
 Backends:
 
