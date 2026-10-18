@@ -21,7 +21,10 @@ static bool esp32_begin(void *ctx, uint32_t image_len)
     if (s_update_part == NULL || image_len > s_update_part->size) {
         return false;
     }
-    s_writing = esp_ota_begin(s_update_part, image_len, &s_handle) == ESP_OK;
+    /* Erase sector by sector as DATA arrives (anv_node_ota.c only accepts DATA in order), not the
+     * whole image size here: that takes seconds on an ESP32, longer than a host waits for the
+     * BEGIN ACK, so the first flash attempt timed out. */
+    s_writing = esp_ota_begin(s_update_part, OTA_WITH_SEQUENTIAL_WRITES, &s_handle) == ESP_OK;
     return s_writing;
 }
 

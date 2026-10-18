@@ -296,7 +296,8 @@ class BenchGateway:
             f"{len(image)} bytes for an {HW_NAMES.get(chip, CHIP_NAMES.get(chip, '?'))}",
         )
         crc = zlib.crc32(image) & 0xFFFFFFFF
-        s = Session(self._transfer_link, self.schema, self.cfg.host_id, job.node_id)
+        # 10 s per reply: boards on firmware that erases the whole slot at BEGIN take seconds to ACK it.
+        s = Session(self._transfer_link, self.schema, self.cfg.host_id, job.node_id, timeout_ms=10000)
         try:
             s.begin(info.type_id, chip, len(image), crc)
             offset = 0
