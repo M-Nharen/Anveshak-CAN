@@ -93,7 +93,7 @@ def test_build_only(fake_cli, tmp_path):
     assert [Path(x).name for x in libs] == ["anv_link", "anv_proto", "anv_node"]
     assert all(Path(x).parent == REPO / "firmware" / "lib" for x in libs)
     assert "--upload" not in call
-    assert "anv-flash flash can1" in out
+    assert "--can can1" in out and "first build" in out
 
 
 def test_work_copy_is_incremental_and_never_touches_the_sketch(fake_cli, tmp_path):

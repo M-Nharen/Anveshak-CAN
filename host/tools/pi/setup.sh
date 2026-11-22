@@ -94,12 +94,16 @@ step "Host library and tools -> $VENV (builds C++: 5-10 minutes on a Pi 4)"
 for tool in anv-build anv-flash anv-host anv-can anv-schema; do
   ln -sf "$VENV/bin/$tool" "$BIN/$tool"
 done
-grep -qs 'ANV_REPO=' "$HOME/.profile" || {
-  printf '\n# Anveshak CAN (host/tools/pi/setup.sh)\nexport ANV_REPO="%s"\n' "$repo" >>"$HOME/.profile"
+# ANV_SCHEMA_JSON: every tool and script reads the repo's schema, so a new node type works after
+# `git pull` / `anv-build` without reinstalling the host library.
+grep -qs 'ANV_SCHEMA_JSON=' "$HOME/.profile" || {
+  printf '\n# Anveshak CAN (host/tools/pi/setup.sh)\n'
+  printf 'export ANV_REPO="%s"\n' "$repo"
+  printf 'export ANV_SCHEMA_JSON="%s/schema/generated/schema.json"\n' "$repo"
   # shellcheck disable=SC2016  # $PATH is meant literally: .profile expands it at login
-  printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$BIN" "$BIN" >>"$HOME/.profile"
-}
-export PATH="$BIN:$PATH" ANV_REPO="$repo"
+  printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$BIN" "$BIN"
+} >>"$HOME/.profile"
+export PATH="$BIN:$PATH" ANV_REPO="$repo" ANV_SCHEMA_JSON="$repo/schema/generated/schema.json"
 echo "tools in $BIN: anv-build anv-flash anv-host anv-can anv-schema"
 
 step "USB serial access (first flash of a new board)"

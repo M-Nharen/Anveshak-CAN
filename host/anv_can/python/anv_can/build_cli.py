@@ -205,10 +205,10 @@ def compile_sketch(
     if verbose:
         cmd.append("--verbose")
     cmd.append(str(work))
+    first = "" if build.is_dir() else " - the first build takes a few minutes"
     print(
         f"building {sketch.name} for {chip} ({fqbn})"
-        f"{' and uploading to ' + usb_port if usb_port else ''}"
-        " - the first build takes a few minutes",
+        f"{' and uploading to ' + usb_port if usb_port else ''}{first}",
         file=out,
         flush=True,
     )
@@ -451,7 +451,7 @@ def main(argv: list[str] | None = None, open_link=None, out: TextIO | None = Non
             file=out,
         )
         if not a.usb:
-            print(f"flash it over CAN with: anv-flash flash can1 <node> {image}", file=out)
+            print(f"to flash it over CAN: anv-build {a.sketch} <node> --can can1", file=out)
         return 0
     except (BuildError, StopIteration) as e:
         print(f"anv-build: {e or 'unknown chip in --fqbn'}", file=sys.stderr)

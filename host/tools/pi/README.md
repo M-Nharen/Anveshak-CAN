@@ -30,7 +30,9 @@ The script installs and sets up:
 - `arduino-cli` 1.3.1 in `~/.local/bin`, with the ESP32 core **3.3.12** (the version CI builds with).
 - The host library in `~/anv-venv`, with `anv-build`, `anv-flash`, `anv-host`, `anv-can` and
   `anv-schema` linked into `~/.local/bin`.
-- `ANV_REPO` pointing at your checkout, so `anv-build` finds the libraries from any folder.
+- `ANV_REPO` pointing at your checkout, so `anv-build` finds the libraries from any folder, and
+  `ANV_SCHEMA_JSON` pointing at the repo's `schema/generated/schema.json`, so `anv-host`, `anv-can`
+  and your Python scripts know a new node type after a `git pull`. You don't need to reinstall.
 - Your user in the `dialout` group, for USB flashing (log out and in once).
 - `can0` and `can1` brought up at boot at 500 kbit/s, restarting by themselves after a bus-off.
   If they don't exist yet, it prints the `config.txt` lines for the CAN HAT.
