@@ -140,7 +140,16 @@ missing=()
 for i in $can_ifaces; do
   sudo systemctl enable "anv-can@$i.service" >/dev/null 2>&1
   if ip link show "$i" >/dev/null 2>&1; then
-    sudo systemctl restart "anv-can@$i.service" && echo "$i: up"
+    if sudo systemctl restart "anv-can@$i.service" 2>/dev/null; then
+      echo "$i: up"
+    else
+      # Not fatal: building works without CAN. Show why, since systemd's message doesn't.
+      echo "$i: FAILED to come up. Last log lines:"
+      sudo journalctl -u "anv-can@$i.service" -n 4 --no-pager -o cat 2>/dev/null | sed 's/^/    /'
+      echo "  'Connection timed out' / 'No such device': check this channel's interrupt= and"
+      echo "  oscillator= in /boot/firmware/config.txt. 'Device or resource busy': something else"
+      echo "  manages $i (systemctl list-units | grep -i can). One-channel HAT: rerun with --can can0."
+    fi
   else
     missing+=("$i")
   fi
