@@ -10,7 +10,8 @@ commands, run actions.
 | | |
 | --- | --- |
 | Heartbeat | state, CAN state, type ID, low 16 bits of the schema's wire hash, uptime; at the `heartbeat_hz` setting |
-| Node ID | asks with `id_request` (MAC + type) from 255 every 0.4–0.6 s with jitter until a host answers with `id_assign`. Or a fixed ID: `cfg.fixed_id`, or `anv_node_save_id()` (kept in storage). `cfg.save_assigned_id` keeps an assigned ID across reboots. NMT `forget_id` (while idle) asks again. |
+| Node ID | `cfg.node_id` (1–254), required: normally the board's DIP switches, read with `anv_node_esp32_read_dip()`. Nothing on the bus assigns IDs. |
+| Duplicate IDs | a frame from another board with this node's ID as its source means two boards share a DIP setting: the node raises `id_conflict` once, latches FAULT (not clearable by `fault_reset`) and sends nothing more except E-stop. Both boards do this. `anv_node_id_conflict()` tells the application (for an LED). |
 | Outputs off by default | `outputs_off` is called at start and every time the node leaves ARMED. Outputs may be on only while `anv_node_armed()`. |
 | Arm / disarm | NMT `arm` from the leader with its current term, only from IDLE |
 | Command watchdog | every command with `watchdog_ms` in the schema has its own timer; while armed, a missing command disarms after `min(watchdog_ms, command_timeout_ms)`. The timer starts at ARM. |
@@ -18,7 +19,7 @@ commands, run actions.
 | Leader tracking | follows `host_heartbeat` with role leader; highest term wins. A new term, the leader stepping down, or no heartbeat for `leader_timeout_ms` disarms. Commands, NMT, SYNC, `estop_release` and `debug_level` are taken only from the leader. |
 | Fault | `anv_node_set_fault(node, true)` disarms and latches FAULT until the condition is gone **and** the leader sends NMT `fault_reset` |
 
-States: `boot` → `unassigned` → `idle` ⇄ `armed`; `estop` and `fault` latch over everything (E-stop shows first).
+States: `boot` → `idle` ⇄ `armed`; `estop` and `fault` latch over everything (E-stop shows first).
 
 ## Declared by the schema, served by the runtime
 

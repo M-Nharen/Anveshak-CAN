@@ -6,8 +6,9 @@ sections of `docs/architecture.md` are historical. Don't add STM32 code back.
 **New code is built on the libraries (branch `next`, see README.md).** Everything on the bus is
 described in `schema/` (format: `schema/README.md`) and code is generated from it with
 `anv-schema gen`. Never write message layouts, ports, parameter indices or event codes by hand,
-and never hardcode how many nodes there are or what IDs they have: types are data, IDs are
-assigned at run time. `defs/` is the old (11-bit) system and goes away once the apps move over.
+and never hardcode how many nodes there are or what IDs they have: types are data, and each
+node's ID is set by DIP switches on the board (`cfg.node_id`). There is no automatic ID
+assignment; don't add one back. `defs/` is the old (11-bit) system and goes away once the apps move over.
 
 The full design is in `docs/architecture.md`. It is the spec. Read only the sections your
 prompt names; don't read the whole file unless the prompt says so.

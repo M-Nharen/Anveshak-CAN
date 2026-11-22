@@ -1,8 +1,8 @@
 # Bench node sketch (ESP32 WROOM + ESP32-S3, Arduino)
 
 One sketch for every ESP32 on the bench, built on the v2 libraries: `anv_link` (TWAI, 29-bit IDs),
-`anv_proto` and `anv_node` (`firmware/lib`). Each board gets its node ID from a host automatically,
-so you flash the same file everywhere. It is node type `esp32_bench`
+`anv_proto` and `anv_node` (`firmware/lib`). Each board's node ID comes from its DIP switches, so
+you flash the same file everywhere and set the switches differently on each board. It is node type `esp32_bench`
 (`schema/types/esp32_bench.yaml`): a `status` stream with four numbers about the board and a
 `blink` action. Heartbeat, settings, stream rates, arm/disarm, E-stop and leader tracking all come
 from `anv_node`.
@@ -59,7 +59,7 @@ each board's chip.
 
 | WROOM (single LED) | S3 (RGB) | Meaning |
 | --- | --- | --- |
-| Fast blink | Blue blink | No node ID yet; asking the hosts |
+| Fast blink | Red blink | Another board has the same node ID: change one board's DIP switches, then reset it |
 | Flicker | Green flicker | Running; one flash per frame the bus ACKed |
 | Slow blink | White blink | Identify (NMT identify, or the `blink` action) |
 | Solid on | Red | Bus-off (no ACK, short, wrong bitrate) or TWAI failed to start |
@@ -70,21 +70,30 @@ each board's chip.
 | --- | --- |
 | `diag` | Toggle the once-a-second status line (node state, leader, TWAI state, TEC/REC, counts) |
 | `status` | Print the status line once |
-| `id` | MAC, node ID, type and build ID |
-| `setid <n>` | Save `n` (1–254) as this board's fixed ID and use it now |
-| `forget` | Erase the saved node ID and ask the hosts for a new one |
+| `id` | MAC, node ID and DIP value, type and build ID |
 | `msg <text>` | Send up to 7 characters to everyone as a protocol `text` frame |
 | `estop` | Send E-stop: every node latches it until the leader releases it |
 
 Text frames from a host (`text`, port 14) addressed to this board or to everyone are printed and
 echoed back to the sender with the same `seq`.
 
-## How IDs are assigned
+## Node IDs: the DIP switches
 
-The board sends `id_request` (port 8, from ID 255) with its MAC and type every 0.4–0.6 s, with
-random jitter, until a host's allocator answers with `id_assign` for that MAC. The board keeps the
-ID in NVS (`save_assigned_id`), so it comes back with the same ID after a reset; `forget`, or NMT
-`forget_id` from the leader, makes it ask again.
+Node ID = `BENCH_DIP_ID_BASE` (16) + the switch value, read once at boot. With four switches that's
+IDs 16–31; change a switch, then press reset. Each switch goes between its pin and GND (internal
+pull-ups; closed = 1, `pins[0]` is bit 0):
+
+| Board | DIP pins (bit 0 first) |
+| --- | --- |
+| ESP32-S3 | GPIO 4, 5, 6, 7 |
+| WROOM | GPIO 13, 14, 25, 26 |
+
+Change them, the count or the base in `board_pins.h`. Keep IDs clear of the hosts' (1 = Orin,
+2 = RPi, 250 = the command-line tools).
+
+Two boards on the same setting: each hears the other's frames carrying its own ID, raises
+`id_conflict` (visible in `anv-host events`), goes to FAULT and stops sending. The LED blinks fast
+(red on the S3) and the serial console says which ID. Fix the switches and reset both.
 
 ## The `status` stream
 

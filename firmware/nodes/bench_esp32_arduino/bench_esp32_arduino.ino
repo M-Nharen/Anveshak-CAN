@@ -3,9 +3,9 @@
 // Every board runs this same sketch, built on the v2 libraries in firmware/lib: anv_link (TWAI,
 // 29-bit IDs), anv_proto and anv_node (the node runtime). The node type is `esp32_bench`
 // (schema/types/esp32_bench.yaml): a `status` stream with four numbers about the board and a
-// `blink` action. A board with no ID asks the hosts for one (id_request with its MAC), keeps the
-// answer in NVS and then runs as a normal node: heartbeat, settings, stream rates, arm/disarm,
-// E-stop and leader tracking all come from anv_node. See README.md.
+// `blink` action. Its node ID comes from the DIP switches (board_pins.h); heartbeat, settings,
+// stream rates, arm/disarm, E-stop, leader tracking and duplicate-ID detection all come from
+// anv_node. See README.md.
 //
 // src/schema/ is a copy of the generated code made by sync_schema.sh: edit schema/, not it.
 #include <Arduino.h>
@@ -34,6 +34,7 @@ static bool s_can_ok = false;
 static bool s_diag = true;
 static uint32_t s_blink_until = 0;
 static uint8_t s_text_seq = 0;
+static uint8_t s_dip = 0;
 
 // A build ID that changes with every compile, for the info page (the hosts show it).
 static uint32_t build_id() {
@@ -81,9 +82,11 @@ static void hook_identify(anv_node_t*, void*) {
 }
 
 static void hook_state_changed(anv_node_t* node, uint8_t from, uint8_t to, void*) {
-  Serial.printf("State %s -> %s", anv_node_state_name(from), anv_node_state_name(to));
-  if (anv_node_id(node) != ANV_NODE_UNASSIGNED) Serial.printf(" (node %u)", anv_node_id(node));
-  Serial.println();
+  Serial.printf("State %s -> %s (node %u)\n", anv_node_state_name(from), anv_node_state_name(to), anv_node_id(node));
+  if (anv_node_id_conflict(node)) {
+    Serial.printf("Another board is using node ID %u: give one of them a different DIP setting and reset\n",
+                  anv_node_id(node));
+  }
 }
 
 static bool send_text(anv_node_id_t dst, uint8_t seq, const char* text, size_t len) {
@@ -111,7 +114,7 @@ static void hook_frame(anv_node_t* node, const anv_link_frame_t* f, void*) {
   }
   const bool to_all = anv_id_dst(f->id) == ANV_NODE_BROADCAST;
   Serial.printf("Message from %u%s: %s\n", anv_id_src(f->id), to_all ? " (to everyone)" : "", text);
-  if (len > 0 && anv_node_id(node) != ANV_NODE_UNASSIGNED) send_text(anv_id_src(f->id), m.seq, text, len);
+  if (len > 0) send_text(anv_id_src(f->id), m.seq, text, len);
 }
 
 // ---------------- serial console ----------------
@@ -119,12 +122,8 @@ static void print_status() {
   twai_node_status_t st;
   twai_node_record_t rec;
   Serial.printf("[%lu] ", static_cast<unsigned long>(millis()));
-  const anv_node_id_t id = anv_node_id(&s_node);
-  if (id == ANV_NODE_UNASSIGNED) {
-    Serial.print("waiting for node ID");
-  } else {
-    Serial.printf("node=%u %s", id, anv_node_state_name(anv_node_state(&s_node)));
-  }
+  Serial.printf("node=%u %s%s", anv_node_id(&s_node), anv_node_state_name(anv_node_state(&s_node)),
+                anv_node_id_conflict(&s_node) ? " ID-CONFLICT" : "");
   if (anv_node_has_leader(&s_node)) Serial.printf(" leader=%u", anv_node_leader(&s_node));
   if (!s_can_ok || !anv_twai_get_info(&s_twai, &st, &rec)) {
     Serial.println("  TWAI not running");
@@ -147,10 +146,8 @@ static void print_status() {
 }
 
 static void handle_command(char* line) {
-  unsigned id = 0;
   if (strcmp(line, "help") == 0) {
-    Serial.println("commands: diag (toggle the 1 s status line), status, id, setid <1-254>, forget, "
-                   "msg <text>, estop");
+    Serial.println("commands: diag (toggle the 1 s status line), status, id, msg <text>, estop");
   } else if (strcmp(line, "diag") == 0) {
     s_diag = !s_diag;
     Serial.printf("periodic status %s\n", s_diag ? "on" : "off");
@@ -159,26 +156,13 @@ static void handle_command(char* line) {
   } else if (strcmp(line, "id") == 0) {
     Serial.print("MAC ");
     print_mac(s_node.cfg.mac);
-    if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
-      Serial.print("  no node ID yet");
-    } else {
-      Serial.printf("  node ID %u%s", anv_node_id(&s_node), s_node.id_saved ? " (saved)" : "");
-    }
+    Serial.printf("  node ID %u (DIP %u)%s", anv_node_id(&s_node), s_dip,
+                  anv_node_id_conflict(&s_node) ? "  CONFLICT: another board has it" : "");
     Serial.printf("  type %s  build %08lx\n", anv_esp32_bench_type.name, static_cast<unsigned long>(build_id()));
-  } else if (sscanf(line, "setid %u", &id) == 1) {
-    Serial.println(anv_node_save_id(&s_node, static_cast<anv_node_id_t>(id)) ? "Node ID saved"
-                                                                               : "Refused (1-254, and not while armed)");
-  } else if (strcmp(line, "forget") == 0) {
-    Serial.println(anv_node_forget_id(&s_node) ? "Node ID erased; asking the hosts for a new one"
-                                               : "Refused while armed");
   } else if (strncmp(line, "msg ", 4) == 0) {
-    if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
-      Serial.println("No node ID yet: messages go out once a host has given this board an ID");
-    } else {
-      const size_t len = strlen(line + 4);
-      if (len > kTextMaxLen) Serial.printf("Only the first %u characters fit in one frame\n", unsigned(kTextMaxLen));
-      Serial.println(send_text(ANV_NODE_BROADCAST, ++s_text_seq, line + 4, len) ? "Message sent" : "Send queue full");
-    }
+    const size_t len = strlen(line + 4);
+    if (len > kTextMaxLen) Serial.printf("Only the first %u characters fit in one frame\n", unsigned(kTextMaxLen));
+    Serial.println(send_text(ANV_NODE_BROADCAST, ++s_text_seq, line + 4, len) ? "Message sent" : "Not sent");
   } else if (strcmp(line, "estop") == 0) {
     anv_node_estop(&s_node, 0);
     Serial.println("E-stop sent; every node is latched until the leader releases it");
@@ -224,7 +208,9 @@ void setup() {
   anv_node_esp32_identity(&cfg, &s_nvs);
   cfg.info.fw_build = build_id();
   cfg.ota = anv_node_ota_esp32_backend();  // flashing over CAN: schema's `transfer` port, service `ota`
-  cfg.save_assigned_id = true;  // a board keeps its ID across reboots; `forget` asks again
+  static const int dip_pins[] = BENCH_DIP_PINS;
+  s_dip = anv_node_esp32_read_dip(dip_pins, sizeof dip_pins / sizeof dip_pins[0]);
+  cfg.node_id = BENCH_DIP_ID_BASE + s_dip;  // read once at boot: change a switch, then reset
   cfg.outputs_off = hook_outputs_off;
   cfg.setup = hook_setup;
   cfg.loop = hook_loop;
@@ -252,11 +238,7 @@ void setup() {
     Serial.println("anv_node_init FAILED");  // only if the type outgrew the tables
   }
   anv_node_begin(&s_node, millis());
-  if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
-    Serial.println("No node ID saved: asking the hosts for one");
-  } else {
-    Serial.printf("Node ID %u (saved). Type 'forget' to ask for a new one.\n", anv_node_id(&s_node));
-  }
+  Serial.printf("Node ID %u (DIP switches = %u)\n", anv_node_id(&s_node), s_dip);
 }
 
 void loop() {
@@ -269,8 +251,8 @@ void loop() {
       mode = LedMode::BusOff;
     } else if ((int32_t)(now - s_blink_until) < 0) {
       mode = LedMode::Identify;
-    } else if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
-      mode = LedMode::WaitingForId;
+    } else if (anv_node_id_conflict(&s_node)) {
+      mode = LedMode::IdConflict;
     } else {
       mode = LedMode::Running;
     }

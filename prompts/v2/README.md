@@ -53,7 +53,7 @@ If a session hits a usage limit mid-task, wait for the reset, then in a new sess
 
 On the RPi bench with at least two ESP32s running the new node library:
 
-- [ ] Both nodes get IDs automatically and are listed by the host tool
+- [ ] Both nodes appear with their DIP-switch IDs in the host tool
 - [ ] Each node reports its type and the host matches it to the schema (version check passes)
 - [ ] Read and change a setting live; it survives a node reboot
 - [ ] Change a stream rate live and see telemetry rate change

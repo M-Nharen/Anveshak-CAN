@@ -16,7 +16,6 @@ widths, ports, layouts, enums. Nothing here knows how many nodes there are or wh
 | `anv/host/host.hpp` | `Host`: a brain on the bus (below) |
 | `anv/host/election.hpp` | Leader election rules, pure logic with a fake clock |
 | `anv/host/registry.hpp` | Node registry: discovery from heartbeats, type lookup, schema check, online/offline |
-| `anv/host/allocator.hpp` | ID assignment server: MAC -> ID table kept in a text file |
 | `python/` | pybind11 module `anv_can` and the `anv-can`, `anv-host` and `anv-flash` tools |
 
 Frames are byte-identical to the ESP32 side: `tests/test_proto.cpp` compares against the
@@ -78,10 +77,8 @@ looked up in the schema by `type_id`.
   MAC. A node whose heartbeat hash doesn't match our schema's type is listed as
   `schema_mismatch` and nothing is decoded from or asked of it. Offline after
   `node_timeout_ms` (or 3.5 heartbeat periods, if longer).
-- **IDs.** Answers `id_request` with an ID from `id_first..id_last` (default: the schema's
-  range) and keeps MAC -> ID in `id_table_path`, so a board always gets its ID back.
-  `allocator`: `off`, `always`, or `auto` (default): answer while leading, or while nobody leads
-  and this is the lowest-numbered host that could lead, so two hosts never answer.
+- **IDs.** Node IDs are the boards' own (DIP switches); a host never hands IDs out. A host's own
+  ID is `host_id` in its config (1 = Orin, 2 = RPi by convention; the CLI tools use 250).
 - **Leadership.** docs/architecture.md "Hosts: choosing which one leads", for any hosts with
   any IDs: start standby, claim only when a `lead_request` names you (`request_lead()`) or with
   `auto_takeover`, higher term wins, then lower `tie_break`, then lower ID. `observer` hosts
@@ -131,8 +128,7 @@ anv-host debug vcan0 20 2 --take-lead        # debug level 2 on node 20 (0-3)
 anv-host events vcan0                        # watch error events from every node, Ctrl-C to stop
 ```
 
-The tool is a host with ID `--host-id` (default `$ANV_HOST_ID`, else 250) that never hands out
-IDs. Taking the lead disarms every node (new term); when the tool exits, nodes it armed disarm.
+The tool is a host with ID `--host-id` (default `$ANV_HOST_ID`, else 250). Taking the lead disarms every node (new term); when the tool exits, nodes it armed disarm.
 
 ## `anv-flash`
 

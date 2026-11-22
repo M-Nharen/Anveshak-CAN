@@ -43,8 +43,8 @@ void led_update(uint32_t now_ms, LedMode mode, uint32_t tx_ok_count) {
     case LedMode::BusOff:
       show(Color::Red);
       return;
-    case LedMode::WaitingForId:
-      show((now_ms / kBlinkHalfMs) % 2 ? Color::Blue : Color::Off);
+    case LedMode::IdConflict:
+      show((now_ms / kBlinkHalfMs) % 2 ? Color::Red : Color::Off);
       return;
     case LedMode::Identify:
       show((now_ms / kIdentifyHalfMs) % 2 ? Color::White : Color::Off);
