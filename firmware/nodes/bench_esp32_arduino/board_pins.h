@@ -3,13 +3,21 @@
 #ifndef BENCH_BOARD_PINS_H
 #define BENCH_BOARD_PINS_H
 
+#include <Arduino.h>  // the board variant's pins (RGB_BUILTIN)
+
 #include "sdkconfig.h"
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
-/* ESP32-S3 DevKitC: addressable RGB LED on GPIO 48 (on some board revisions it is GPIO 38). */
+/* ESP32-S3 boards: the addressable RGB LED moves between boards (GPIO 48 on most DevKitC-1, 38 on
+ * v1.1, elsewhere on other makers' boards). The Arduino core's board variant knows it as
+ * RGB_BUILTIN, so pick the right board in Tools > Board and the LED follows; 48 otherwise. */
 #define BENCH_CAN_TX_GPIO 16
 #define BENCH_CAN_RX_GPIO 15
+#if defined(RGB_BUILTIN)
+#define BENCH_LED_GPIO RGB_BUILTIN
+#else
 #define BENCH_LED_GPIO 48
+#endif
 #define BENCH_LED_IS_RGB 1
 #elif defined(CONFIG_IDF_TARGET_ESP32)
 /* WROOM DevKit: plain LED on GPIO 2. GPIO 16/17 are the PSRAM pins on WROVER modules and GPIO 15
