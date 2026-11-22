@@ -87,10 +87,14 @@ cli="$BIN/arduino-cli"
 "$cli" core install "$ESP32_CORE"
 
 step "Host library and tools -> $VENV (builds C++: 5-10 minutes on a Pi 4)"
-[[ -x $VENV/bin/python ]] || python3 -m venv "$VENV"
-"$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q -e "$repo/host/python/anv_schema"   # -e: `git pull` updates it
-"$VENV/bin/pip" install -q "$repo/host/anv_can"                # rerun setup after a pull
+# Without PYTHONPATH: on a Pi with ROS 2 sourced it points at ROS's packages, and pip would check
+# (and complain about) those instead of just the venv's.
+vpip() { env -u PYTHONPATH "$VENV/bin/pip" "$@"; }
+[[ -x $VENV/bin/python ]] || env -u PYTHONPATH python3 -m venv "$VENV"
+vpip install -q --upgrade pip
+vpip install -q -e "$repo/host/python/anv_schema"   # -e: `git pull` updates it
+echo "building the host library (output hidden; 5-10 minutes on a Pi 4)..."
+vpip install -q "$repo/host/anv_can"                # rerun setup after a pull
 for tool in anv-build anv-flash anv-host anv-can anv-schema; do
   ln -sf "$VENV/bin/$tool" "$BIN/$tool"
 done
