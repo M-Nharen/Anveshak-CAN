@@ -17,7 +17,7 @@ static h_app_t *app;
 static void boot(void)
 {
     h_reset();
-    h_config(0, &anv_motor_controller_type)->fixed_id = NODE;
+    h_config(0, &anv_motor_controller_type)->node_id = NODE;
     MT_CHECK(h_start(0));
     n = &h_nodes[0].node;
     app = &h_nodes[0].app;
@@ -232,15 +232,6 @@ static void test_estop(void)
     MT_CHECK(f != NULL && anv_estop_unpack(&e, f->data, f->len) && e.reason == 3);
     MT_CHECK(anv_id_priority(f->id) == 0u);
 
-    /* A board without an ID still latches, and stays latched once it gets one. */
-    h_reset();
-    h_config(0, &anv_motor_controller_type);
-    MT_CHECK(h_start(0));
-    h_estop(77);
-    h_step(1);
-    MT_CHECK(h_nodes[0].node.estop_latched);
-    MT_CHECK(anv_node_save_id(&h_nodes[0].node, 12));
-    MT_CHECK(anv_node_state(&h_nodes[0].node) == ANV_NODE_STATE_ESTOP);
 }
 
 static void test_leader_change(void)
@@ -310,6 +301,74 @@ static void test_leader_lost(void)
     /* Once lost, a restarted host may lead again with a fresh (lower) term. */
     h_step_with_leader(60, 1);
     MT_CHECK(anv_node_has_leader(n));
+}
+
+/* The event code node NODE sent most recently, or 0. */
+static uint16_t last_event_code(void)
+{
+    anv_event_t e;
+    const anv_link_frame_t *f = h_last(ANV_EVENT_PORT, NODE);
+    return (f != NULL && anv_event_unpack(&e, f->data, f->len)) ? e.code : 0u;
+}
+
+/* Every way the runtime disarms a node on its own also says why, as an event. */
+static void test_disarm_reasons_reported(void)
+{
+    anv_event_t e;
+    const anv_link_frame_t *f;
+
+    boot();
+    arm();
+    drive(100);
+    h_clear_log();
+    h_step_with_leader(150, TERM); /* commands stop */
+    MT_CHECK(!anv_node_armed(n));
+    MT_CHECK(last_event_code() == ANV_EVENT_COMMAND_TIMEOUT);
+    f = h_last(ANV_EVENT_PORT, NODE);
+    MT_CHECK(anv_event_unpack(&e, f->data, f->len) && e.detail == SETPOINT);
+
+    boot();
+    arm();
+    drive(100);
+    h_clear_log();
+    for (uint32_t k = 0; k < 400 && anv_node_has_leader(n); k++) { /* leader goes silent */
+        if (h_now % 20u == 0u) {
+            setpoint_from(H_HOST_ID, 1);
+            sync_from(H_HOST_ID);
+        }
+        h_step(1);
+    }
+    h_step(2);
+    MT_CHECK(last_event_code() == ANV_EVENT_LEADER_LOST);
+
+    boot();
+    arm();
+    drive(100);
+    h_clear_log();
+    h_host_heartbeat(2, ANV_HOST_ROLE_LEADER, TERM + 1); /* another host takes over */
+    h_step(2);
+    MT_CHECK(last_event_code() == ANV_EVENT_LEADER_CHANGED);
+
+    boot();
+    h_step_with_leader(60, TERM);
+    h_clear_log();
+    h_estop(5);
+    h_step(2);
+    MT_CHECK(last_event_code() == ANV_EVENT_ESTOP_RECEIVED);
+    f = h_last(ANV_EVENT_PORT, NODE);
+    MT_CHECK(anv_event_unpack(&e, f->data, f->len) && e.detail == 5);
+    h_clear_log();
+    h_estop(5); /* already latched: no second report */
+    h_step(2);
+    MT_CHECK(h_count(ANV_EVENT_PORT, NODE) == 0);
+
+    /* Losing a leader while merely idle is routine (a host restarting): no event. */
+    boot();
+    h_step_with_leader(60, TERM);
+    h_clear_log();
+    h_step(400);
+    MT_CHECK(!anv_node_has_leader(n));
+    MT_CHECK(h_count(ANV_EVENT_PORT, NODE) == 0);
 }
 
 static void test_fault(void)
@@ -390,6 +449,7 @@ int main(void)
     MT_RUN(test_estop);
     MT_RUN(test_leader_change);
     MT_RUN(test_leader_lost);
+    MT_RUN(test_disarm_reasons_reported);
     MT_RUN(test_fault);
     MT_RUN(test_hooks);
     return mt_summary();

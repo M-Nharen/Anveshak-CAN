@@ -10,9 +10,10 @@
  *     with its own watchdog; `apply: sync` commands are held until the next SYNC
  *   - actions: one-shot requests over SERVICE, passed to the application
  *
- * Built in, and not switchable: heartbeat with type ID and schema hash, automatic node ID
- * assignment (or a saved fixed ID), arm/disarm, E-stop latch, leader tracking, disarm on
- * command timeout, on leader change or loss and on fault. Outputs are off unless the node is
+ * Built in, and not switchable: heartbeat with type ID and schema hash, arm/disarm, E-stop latch,
+ * leader tracking, disarm on command timeout, on leader change or loss and on fault, and
+ * duplicate-ID detection. The node ID is the application's (normally the board's DIP switches,
+ * anv_node_esp32_read_dip()); nothing on the bus assigns IDs. Outputs are off unless the node is
  * ARMED; the application's outputs_off hook is called on every way out of ARMED.
  *
  * No allocation, no RTOS, no clock of its own and nothing that blocks: the caller passes the
@@ -47,15 +48,9 @@ extern "C" {
 #endif
 #define ANV_NODE_LABEL_LEN 16u /* 4 chunks of 4 characters (SERVICE label_get / label_set) */
 
-/* ID request timing: first request after 100..600 ms, then every 400..650 ms. The jitter keeps
- * boards that power up together from asking at the same moment. */
-#define ANV_NODE_ID_REQUEST_FIRST_MS 100u
-#define ANV_NODE_ID_REQUEST_EVERY_MS 400u
-#define ANV_NODE_ID_REQUEST_JITTER_MS 500u
-
 typedef struct anv_node_s anv_node_t;
 
-/* Where settings and the saved node ID live (NVS on the ESP32, RAM in tests). Keys are short
+/* Where settings, the black box and the OTA marker live (NVS on the ESP32, RAM in tests). Keys are short
  * (at most 15 characters, NVS's limit). load returns the stored length, or 0 if the key is
  * missing or its value doesn't fit in `cap`. */
 typedef struct {
@@ -76,17 +71,15 @@ typedef struct {
 typedef struct {
     const anv_type_desc_t *type; /* the generated anv_<type>_type */
     anv_link_t *link;            /* started by the caller; the node sets its filters */
-    uint8_t mac[6];              /* identifies the board when it asks for an ID */
+    uint8_t mac[6];              /* reported on the info pages (mac_low / mac_high) */
     anv_node_info_t info;
 
     const anv_node_storage_t *storage; /* NULL: nothing is saved (SAVE reports storage_error) */
     void *storage_ctx;
 
-    /* 0: ask the hosts for an ID (or use a saved one). 1..254: always use this ID. */
-    anv_node_id_t fixed_id;
-    /* Keep an assigned ID across reboots (saved like a fixed ID). Off: ask again every boot;
-     * the hosts' allocator remembers the MAC, so the answer is normally the same. */
-    bool save_assigned_id;
+    /* Required: this board's node ID, 1..254, normally read from its DIP switches. Keep it unique
+     * on the bus: two boards with one ID both detect it, raise id_conflict and go quiet. */
+    anv_node_id_t node_id;
 
     /* Flash access for firmware updates (anv_node_ota.h). NULL: OTA is refused (NO_BACKEND). */
     const anv_node_ota_backend_t *ota;
@@ -132,6 +125,7 @@ typedef struct {
     uint32_t leader_losses;
     uint32_t estops;
     uint32_t services;
+    uint32_t id_conflicts; /* frames heard from another board using this node's ID */
 } anv_node_stats_t;
 
 typedef struct {
@@ -154,8 +148,8 @@ struct anv_node_s {
     anv_node_stats_t stats;
 
     uint8_t state;     /* anv_node_state_t */
-    anv_node_id_t id;  /* ANV_NODE_UNASSIGNED until known */
-    bool id_saved;
+    anv_node_id_t id;  /* cfg.node_id */
+    bool id_conflict;  /* another board uses our ID: latched until reset, nothing more is sent */
     bool estop_latched;
     bool fault_active; /* the application's fault condition */
     bool fault_latched;
@@ -182,10 +176,8 @@ struct anv_node_s {
     uint32_t start_ms;
     uint32_t now_ms;
     uint32_t heartbeat_next_ms;
-    uint32_t id_request_next_ms;
     bool debug_timed;        /* the debug_level message set a timeout */
     uint32_t debug_until_ms;
-    uint32_t rng;
     bool begun;
 
     /* OTA and the log transfer share this one ISO-TP channel on the `transfer` port; at most
@@ -197,11 +189,12 @@ struct anv_node_s {
     anv_node_diag_t diag;
 };
 
-/* Fill a config with defaults: no hooks, ask for an ID, don't keep it. */
+/* Fill a config with defaults: no hooks, no ID (set cfg.node_id before anv_node_init). */
 void anv_node_config_default(anv_node_config_t *cfg);
 
-/* Check the config, build the tables from the type, load saved settings and ID.
- * False if the type, link or outputs_off is missing or the type doesn't fit the tables. */
+/* Check the config, build the tables from the type, load saved settings.
+ * False if the type, link or outputs_off is missing, node_id isn't 1..254, or the type doesn't
+ * fit the tables. */
 bool anv_node_init(anv_node_t *node, const anv_node_config_t *cfg);
 /* Set the link filters, turn outputs off, call setup. Call once the link is started. */
 void anv_node_begin(anv_node_t *node, uint32_t now_ms);
@@ -212,7 +205,10 @@ void anv_node_poll(anv_node_t *node, uint32_t now_ms);
 /* --- state ------------------------------------------------------------------------------- */
 uint8_t anv_node_state(const anv_node_t *node);   /* ANV_NODE_STATE_* */
 bool anv_node_armed(const anv_node_t *node);      /* the only state in which outputs may be on */
-anv_node_id_t anv_node_id(const anv_node_t *node); /* ANV_NODE_UNASSIGNED while asking */
+anv_node_id_t anv_node_id(const anv_node_t *node);
+/* Another board is sending with this node's ID (check the DIP switches). Latched until reset;
+ * the node is in FAULT and sends nothing (except E-stop). */
+bool anv_node_id_conflict(const anv_node_t *node);
 bool anv_node_has_leader(const anv_node_t *node);
 anv_node_id_t anv_node_leader(const anv_node_t *node);
 const anv_node_stats_t *anv_node_stats(const anv_node_t *node);
@@ -225,12 +221,6 @@ void anv_node_estop(anv_node_t *node, uint8_t reason);
 void anv_node_set_fault(anv_node_t *node, bool active);
 /* Disarm now (the application's own reason). */
 void anv_node_disarm(anv_node_t *node);
-
-/* --- node ID ----------------------------------------------------------------------------- */
-/* Save `id` (1..254) as this board's fixed ID and use it now. Refused while armed. */
-bool anv_node_save_id(anv_node_t *node, anv_node_id_t id);
-/* Erase the saved ID and ask the hosts again. Refused while armed. */
-bool anv_node_forget_id(anv_node_t *node);
 
 /* --- settings ---------------------------------------------------------------------------- */
 const anv_param_desc_t *anv_node_param(const anv_node_t *node, uint16_t index);

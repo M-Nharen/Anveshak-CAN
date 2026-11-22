@@ -65,7 +65,6 @@ std::function<void(Args...)> wrap(const py::object& fn,
 }
 
 HostConfig make_config(uint8_t host_id, uint8_t tie_break, bool observer, bool auto_takeover,
-                       const std::string& allocator, uint8_t id_first, uint8_t id_last, const std::string& id_table,
                        double heartbeat_hz, double sync_hz, double command_hz, int leader_timeout_ms,
                        int node_timeout_ms, int service_timeout_ms, int service_retries) {
   HostConfig c;
@@ -73,13 +72,6 @@ HostConfig make_config(uint8_t host_id, uint8_t tie_break, bool observer, bool a
   c.tie_break = tie_break;
   c.observer = observer;
   c.auto_takeover = auto_takeover;
-  if (allocator == "off") c.allocator = HostConfig::Allocator::Off;
-  else if (allocator == "auto") c.allocator = HostConfig::Allocator::Auto;
-  else if (allocator == "always") c.allocator = HostConfig::Allocator::Always;
-  else throw py::value_error("allocator must be 'off', 'auto' or 'always'");
-  c.id_first = id_first;
-  c.id_last = id_last;
-  c.id_table_path = id_table;
   c.heartbeat_hz = heartbeat_hz;
   c.sync_hz = sync_hz;
   c.command_hz = command_hz;
@@ -114,7 +106,6 @@ void bind_host(py::module_& m) {
       .def_property_readonly("uptime_s", [](const NodeInfo& n) { return n.last.uptime_s; })
       .def_readonly("reboots", &NodeInfo::reboots)
       .def_readonly("heartbeat_hz", &NodeInfo::heartbeat_hz)
-      .def_readonly("mac", &NodeInfo::mac)
       .def("__repr__", [](const NodeInfo& n) {
         return "<NodeInfo " + std::to_string(n.id) + " " + (n.type ? n.type->name : "type " + std::to_string(n.type_id)) +
                (n.online ? " online" : " offline") + ">";
@@ -131,17 +122,14 @@ void bind_host(py::module_& m) {
 
   py::class_<Host, HostPtr>(m, "Host")
       .def(py::init([](Link& link, std::shared_ptr<Schema> schema, uint8_t host_id, uint8_t tie_break, bool observer,
-                       bool auto_takeover, const std::string& allocator, uint8_t id_first, uint8_t id_last,
-                       const std::string& id_table, double heartbeat_hz, double sync_hz, double command_hz,
+                       bool auto_takeover, double heartbeat_hz, double sync_hz, double command_hz,
                        int leader_timeout_ms, int node_timeout_ms, int service_timeout_ms, int service_retries) {
              return HostPtr(new Host(link, schema,
-                                     make_config(host_id, tie_break, observer, auto_takeover, allocator, id_first, id_last,
-                                                 id_table, heartbeat_hz, sync_hz, command_hz, leader_timeout_ms,
+                                     make_config(host_id, tie_break, observer, auto_takeover, heartbeat_hz, sync_hz, command_hz, leader_timeout_ms,
                                                  node_timeout_ms, service_timeout_ms, service_retries)));
            }),
            py::arg("link"), py::arg("schema"), py::kw_only(), py::arg("host_id"), py::arg("tie_break") = 0,
-           py::arg("observer") = false, py::arg("auto_takeover") = false, py::arg("allocator") = "auto",
-           py::arg("id_first") = 0, py::arg("id_last") = 0, py::arg("id_table") = "", py::arg("heartbeat_hz") = 20.0,
+           py::arg("observer") = false, py::arg("auto_takeover") = false, py::arg("heartbeat_hz") = 20.0,
            py::arg("sync_hz") = 50.0, py::arg("command_hz") = 50.0, py::arg("leader_timeout_ms") = 250,
            py::arg("node_timeout_ms") = 500, py::arg("service_timeout_ms") = 100, py::arg("service_retries") = 2,
            py::keep_alive<1, 2>(), py::keep_alive<1, 3>())
@@ -186,9 +174,6 @@ void bind_host(py::module_& m) {
         });
         cb.leader_lost = wrap<uint8_t>(get("leader_lost"), [](uint8_t l) { return py::make_tuple(l); });
         cb.two_leaders = wrap<uint8_t, uint8_t>(get("two_leaders"), [](uint8_t a, uint8_t b) { return py::make_tuple(a, b); });
-        cb.id_assigned = wrap<uint8_t, uint64_t, uint16_t>(get("id_assigned"), [](uint8_t n, uint64_t mac, uint16_t t) {
-          return py::make_tuple(n, mac, t);
-        });
         cb.estop = wrap<uint8_t, uint8_t>(get("estop"), [](uint8_t src, uint8_t reason) { return py::make_tuple(src, reason); });
         if (py::len(kw) != 0) throw py::type_error("unknown callback: " + py::str(kw.begin()->first).cast<std::string>());
         if (!h.set_callbacks(std::move(cb))) throw HostError("set callbacks before start()");
@@ -203,11 +188,6 @@ void bind_host(py::module_& m) {
       .def("nodes", &Host::nodes, py::call_guard<py::gil_scoped_release>())
       .def("node", &Host::node, py::call_guard<py::gil_scoped_release>())
       .def("hosts", &Host::hosts, py::call_guard<py::gil_scoped_release>())
-      .def("id_table", [](const Host& h) {
-        py::list l;
-        for (const Assignment& a : h.id_table()) l.append(py::make_tuple(a.mac, a.node_id, a.type_id));
-        return l;
-      })
       .def("wait_for_node", &Host::wait_for_node, py::arg("node"), py::arg("timeout_ms"),
            py::call_guard<py::gil_scoped_release>())
       .def("wait_for_lead", &Host::wait_for_lead, py::arg("timeout_ms"), py::call_guard<py::gil_scoped_release>())
@@ -228,10 +208,6 @@ void bind_host(py::module_& m) {
       .def("resign", &Host::resign, py::call_guard<py::gil_scoped_release>())
       .def("set_operator_link", &Host::set_operator_link)
       .def("set_autonomy_ready", &Host::set_autonomy_ready)
-      .def("pin_id", [](Host& h, uint64_t mac, uint8_t node, uint16_t type_id) {
-        std::string err;
-        if (!h.pin_id(mac, node, type_id, &err)) throw HostError(err);
-      }, py::arg("mac"), py::arg("node"), py::arg("type_id"))
       // settings, rates, actions
       .def("get", [](Host& h, uint8_t node, const std::string& p) {
         Result r;

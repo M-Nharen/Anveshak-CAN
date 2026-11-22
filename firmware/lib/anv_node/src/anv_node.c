@@ -2,21 +2,11 @@
 
 #include <string.h>
 
+#include "anv_node_diag.h"
 
 static bool due(uint32_t now, uint32_t at)
 {
     return (int32_t)(now - at) >= 0;
-}
-
-static uint32_t next_random(anv_node_t *n)
-{
-    /* xorshift32: only spreads out ID requests, so quality hardly matters */
-    uint32_t x = n->rng;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    n->rng = x;
-    return x;
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -25,6 +15,12 @@ static uint32_t next_random(anv_node_t *n)
 bool anv_node_i_send(anv_node_t *n, uint8_t priority, anv_node_id_t dst, uint16_t port, const uint8_t *data,
                      uint8_t len)
 {
+    /* With a duplicate ID on the bus every frame we send can collide with the other board's, so
+     * a conflicted node goes quiet. E-stop still gets out: stopping must always work. */
+    if (n->id_conflict && port != ANV_ESTOP_PORT) {
+        n->stats.tx_dropped++;
+        return false;
+    }
     const anv_proto_addr_t a = {priority, dst, port, n->id};
     anv_link_frame_t f;
     if (!anv_proto_frame(&f, &a, data, len) || anv_link_send(n->cfg.link, &f) != ANV_LINK_OK) {
@@ -55,16 +51,6 @@ static void send_heartbeat(anv_node_t *n)
     (void)anv_node_i_send(n, ANV_HEARTBEAT_PRIORITY, ANV_NODE_BROADCAST, ANV_HEARTBEAT_PORT, data, len);
 }
 
-static void send_id_request(anv_node_t *n)
-{
-    anv_id_request_t r;
-    memcpy(r.mac, n->cfg.mac, sizeof r.mac);
-    r.type_id = n->cfg.type->type_id;
-    uint8_t data[8];
-    const uint8_t len = anv_id_request_pack(data, &r);
-    (void)anv_node_i_send(n, ANV_ID_REQUEST_PRIORITY, ANV_NODE_BROADCAST, ANV_ID_REQUEST_PORT, data, len);
-}
-
 /* ------------------------------------------------------------------------------------------ */
 /* state                                                                                       */
 
@@ -79,8 +65,6 @@ static void set_state(anv_node_t *n, bool armed)
     uint8_t s;
     if (!n->begun) {
         s = ANV_NODE_STATE_BOOT;
-    } else if (n->id == ANV_NODE_UNASSIGNED) {
-        s = ANV_NODE_STATE_UNASSIGNED;
     } else if (n->estop_latched) {
         s = ANV_NODE_STATE_ESTOP;
     } else if (n->fault_latched) {
@@ -142,13 +126,15 @@ static void on_transfer_rx(void *user, const uint8_t *data, uint16_t len)
 static bool transfer_send(void *user, const anv_link_frame_t *frame)
 {
     anv_node_t *n = (anv_node_t *)user;
+    if (n->id_conflict) {
+        return false;
+    }
     anv_link_frame_t f = *frame;
     return anv_link_send(n->cfg.link, &f) == ANV_LINK_OK;
 }
 
-/* (Re)bind the shared transfer channel to this node's own ID as its sender. Called whenever
- * the ID changes; any session in progress is dropped (an unassigned node can't run one). */
-static void rebind_transfer(anv_node_t *n, anv_node_id_t id)
+/* Bind the shared transfer channel to this node's own ID as its sender (at begin). */
+static void bind_transfer(anv_node_t *n, anv_node_id_t id)
 {
     anv_isotp_config_t ic;
     anv_isotp_config_default(&ic);
@@ -162,21 +148,13 @@ static void rebind_transfer(anv_node_t *n, anv_node_id_t id)
     (void)anv_isotp_init(&n->transfer, &ic);
 }
 
-static void use_id(anv_node_t *n, anv_node_id_t id)
+static void start_on_bus(anv_node_t *n)
 {
-    n->id = id;
-    if (!n->begun) {
-        return;
-    }
     apply_filters(n);
-    rebind_transfer(n, id);
-    if (id == ANV_NODE_UNASSIGNED) {
-        n->id_request_next_ms = n->now_ms + ANV_NODE_ID_REQUEST_FIRST_MS + next_random(n) % ANV_NODE_ID_REQUEST_JITTER_MS;
-    } else {
-        n->heartbeat_next_ms = n->now_ms; /* announce ourselves at once */
-        for (uint8_t i = 0; i < n->n_streams; i++) {
-            n->streams[i].next_ms = n->now_ms + n->streams[i].period_ms;
-        }
+    bind_transfer(n, n->id);
+    n->heartbeat_next_ms = n->now_ms; /* announce ourselves at once */
+    for (uint8_t i = 0; i < n->n_streams; i++) {
+        n->streams[i].next_ms = n->now_ms + n->streams[i].period_ms;
     }
     set_state(n, false);
 }
@@ -203,7 +181,7 @@ static const anv_msg_desc_t *find_type_msg(const anv_node_t *n, uint16_t port)
 bool anv_node_send(anv_node_t *n, uint16_t port, const uint8_t *data, uint8_t len)
 {
     const anv_msg_desc_t *m = find_type_msg(n, port);
-    if (m == NULL || m->kind == ANV_KIND_COMMAND || n->id == ANV_NODE_UNASSIGNED || len > 8u) {
+    if (m == NULL || m->kind == ANV_KIND_COMMAND || len > 8u) {
         return false;
     }
     return anv_node_i_send(n, m->priority, ANV_NODE_BROADCAST, port, data, len);
@@ -211,7 +189,8 @@ bool anv_node_send(anv_node_t *n, uint16_t port, const uint8_t *data, uint8_t le
 
 bool anv_node_send_frame(anv_node_t *n, anv_link_frame_t *frame)
 {
-    if (n->id == ANV_NODE_UNASSIGNED) {
+    if (n->id_conflict) {
+        n->stats.tx_dropped++;
         return false;
     }
     frame->id = (frame->id & ~(uint32_t)ANV_PROTO_SRC_MASK) | ((uint32_t)n->id << ANV_ID_SRC_SHIFT);
@@ -249,6 +228,15 @@ static void lose_leader(anv_node_t *n)
     disarm(n);
 }
 
+/* Leader-loss and leader-change events are worth reporting only when they cost something: the
+ * node was armed (and is now disarmed). Otherwise every host restart would fill the black box. */
+static void leader_event(anv_node_t *n, bool was_armed, uint16_t code, anv_node_id_t detail)
+{
+    if (was_armed) {
+        anv_node_event(n, code, detail);
+    }
+}
+
 static void on_host_heartbeat(anv_node_t *n, anv_node_id_t src, const anv_link_frame_t *f)
 {
     anv_host_heartbeat_t hb;
@@ -258,8 +246,10 @@ static void on_host_heartbeat(anv_node_t *n, anv_node_id_t src, const anv_link_f
     const bool is_current = n->have_leader && src == n->leader;
     if (hb.role != ANV_HOST_ROLE_LEADER) {
         if (is_current) { /* our leader stepped down */
+            const bool was_armed = anv_node_i_armed(n);
             n->stats.leader_changes++;
             lose_leader(n);
+            leader_event(n, was_armed, ANV_EVENT_LEADER_CHANGED, src);
         }
         return;
     }
@@ -275,8 +265,10 @@ static void on_host_heartbeat(anv_node_t *n, anv_node_id_t src, const anv_link_f
         return; /* same term from another host: the hosts sort that out between them */
     }
     if (n->have_leader) {
+        const bool was_armed = anv_node_i_armed(n);
         n->stats.leader_changes++;
         disarm(n);
+        leader_event(n, was_armed, ANV_EVENT_LEADER_CHANGED, src);
     }
     n->have_leader = true;
     n->leader = src;
@@ -318,7 +310,6 @@ void anv_node_estop(anv_node_t *n, uint8_t reason)
     const anv_estop_t e = {0xE5u, reason};
     uint8_t data[8];
     const uint8_t len = anv_estop_pack(data, &e);
-    /* From 255 too if we have no ID yet: E-stop must always get out. */
     (void)anv_node_i_send(n, ANV_ESTOP_PRIORITY, ANV_NODE_BROADCAST, ANV_ESTOP_PORT, data, len);
 }
 
@@ -335,46 +326,6 @@ void anv_node_set_fault(anv_node_t *n, bool active)
 void anv_node_disarm(anv_node_t *n)
 {
     disarm(n);
-}
-
-bool anv_node_save_id(anv_node_t *n, anv_node_id_t id)
-{
-    if (!valid_id(id) || anv_node_i_armed(n) || n->cfg.storage == NULL ||
-        !n->cfg.storage->save(n->cfg.storage_ctx, ANV_NODE_KEY_ID, &id, 1u)) {
-        return false;
-    }
-    n->id_saved = true;
-    if (id != n->id) {
-        use_id(n, id);
-    }
-    return true;
-}
-
-bool anv_node_forget_id(anv_node_t *n)
-{
-    if (anv_node_i_armed(n) || n->cfg.fixed_id != 0u) {
-        return false;
-    }
-    if (n->cfg.storage != NULL) {
-        (void)n->cfg.storage->erase(n->cfg.storage_ctx, ANV_NODE_KEY_ID);
-    }
-    n->id_saved = false;
-    use_id(n, ANV_NODE_UNASSIGNED);
-    return true;
-}
-
-static void on_id_assign(anv_node_t *n, const anv_link_frame_t *f)
-{
-    anv_id_assign_t a;
-    if (n->id != ANV_NODE_UNASSIGNED || !anv_id_assign_unpack(&a, f->data, f->len) ||
-        memcmp(a.mac, n->cfg.mac, sizeof a.mac) != 0 || !valid_id(a.node_id)) {
-        return;
-    }
-    if (n->cfg.save_assigned_id && n->cfg.storage != NULL &&
-        n->cfg.storage->save(n->cfg.storage_ctx, ANV_NODE_KEY_ID, &a.node_id, 1u)) {
-        n->id_saved = true;
-    }
-    use_id(n, a.node_id);
 }
 
 static void on_nmt(anv_node_t *n, const anv_link_frame_t *f)
@@ -411,11 +362,6 @@ static void on_nmt(anv_node_t *n, const anv_link_frame_t *f)
     case ANV_NMT_COMMAND_IDENTIFY:
         if (n->cfg.on_identify != NULL) {
             n->cfg.on_identify(n, n->cfg.user);
-        }
-        break;
-    case ANV_NMT_COMMAND_FORGET_ID:
-        if (n->state == ANV_NODE_STATE_IDLE) {
-            (void)anv_node_forget_id(n);
         }
         break;
     default:
@@ -499,18 +445,20 @@ static bool on_protocol_frame(anv_node_t *n, const anv_link_frame_t *f)
     const uint16_t port = anv_id_port(f->id);
     const anv_node_id_t src = anv_id_src(f->id);
     const anv_node_id_t dst = anv_id_dst(f->id);
-    const bool assigned = n->id != ANV_NODE_UNASSIGNED;
 
     switch (port) {
     case ANV_ESTOP_PORT: {
         anv_estop_t e;
         if (anv_estop_unpack(&e, f->data, f->len)) {
+            const bool was_latched = n->estop_latched;
             latch_estop(n);
+            if (!was_latched) {
+                anv_node_event(n, ANV_EVENT_ESTOP_RECEIVED, src);
+            }
         }
         return true;
     }
     case ANV_HOST_HEARTBEAT_PORT: on_host_heartbeat(n, src, f); return true;
-    case ANV_ID_ASSIGN_PORT: on_id_assign(n, f); return true;
     case ANV_ESTOP_RELEASE_PORT: {
         anv_estop_release_t r;
         if (from_leader(n, src) && anv_estop_release_unpack(&r, f->data, f->len) && r.term == n->leader_term) {
@@ -520,7 +468,7 @@ static bool on_protocol_frame(anv_node_t *n, const anv_link_frame_t *f)
         return true;
     }
     case ANV_NMT_PORT:
-        if (assigned && from_leader(n, src)) {
+        if (from_leader(n, src)) {
             on_nmt(n, f);
         }
         return true;
@@ -535,13 +483,13 @@ static bool on_protocol_frame(anv_node_t *n, const anv_link_frame_t *f)
         }
         return true;
     case ANV_SERVICE_PORT:
-        if (assigned && dst == n->id) {
+        if (dst == n->id) {
             anv_node_i_on_service(n, src, f);
             return true;
         }
         return false;
     case ANV_TRANSFER_PORT:
-        if (assigned && dst == n->id) {
+        if (dst == n->id) {
             handle_transfer_frame(n, f);
             return true;
         }
@@ -553,7 +501,7 @@ static bool on_protocol_frame(anv_node_t *n, const anv_link_frame_t *f)
 /* True if the runtime handled the frame. */
 static bool on_command_frame(anv_node_t *n, const anv_link_frame_t *f)
 {
-    if (n->id == ANV_NODE_UNASSIGNED || anv_id_dst(f->id) != n->id) {
+    if (anv_id_dst(f->id) != n->id) {
         return false; /* commands are addressed; broadcasts on these ports are other nodes' */
     }
     const uint16_t port = anv_id_port(f->id);
@@ -585,8 +533,10 @@ static bool on_command_frame(anv_node_t *n, const anv_link_frame_t *f)
 static void check_timers(anv_node_t *n)
 {
     if (n->have_leader && due(n->now_ms, n->leader_seen_ms + anv_node_i_param_u(n, ANV_PARAM_LEADER_TIMEOUT_MS))) {
+        const bool was_armed = anv_node_i_armed(n);
         n->stats.leader_losses++;
         lose_leader(n);
+        leader_event(n, was_armed, ANV_EVENT_LEADER_LOST, n->leader);
     }
     if (anv_node_i_armed(n)) {
         const uint32_t limit = anv_node_i_param_u(n, ANV_PARAM_COMMAND_TIMEOUT_MS);
@@ -599,6 +549,7 @@ static void check_timers(anv_node_t *n)
             if (due(n->now_ms, c->last_ms + timeout)) {
                 n->stats.watchdog_trips++;
                 disarm(n);
+                anv_node_event(n, ANV_EVENT_COMMAND_TIMEOUT, c->msg->port);
                 break;
             }
         }
@@ -631,13 +582,12 @@ static bool add_params(anv_node_t *n, const anv_type_desc_t *t)
 bool anv_node_init(anv_node_t *n, const anv_node_config_t *cfg)
 {
     memset(n, 0, sizeof *n);
-    if (cfg->type == NULL || cfg->link == NULL || cfg->outputs_off == NULL ||
-        (cfg->fixed_id != 0u && !valid_id(cfg->fixed_id))) {
+    if (cfg->type == NULL || cfg->link == NULL || cfg->outputs_off == NULL || !valid_id(cfg->node_id)) {
         return false;
     }
     n->cfg = *cfg;
     n->state = ANV_NODE_STATE_BOOT;
-    n->id = ANV_NODE_UNASSIGNED;
+    n->id = cfg->node_id;
     if (!add_params(n, &anv_protocol_type) || !add_params(n, cfg->type)) {
         return false;
     }
@@ -659,23 +609,6 @@ bool anv_node_init(anv_node_t *n, const anv_node_config_t *cfg)
     anv_node_i_load_defaults(n);
     anv_node_i_load_saved(n);
     anv_node_i_diag_load(n);
-
-    if (cfg->fixed_id != 0u) {
-        n->id = cfg->fixed_id;
-    } else if (cfg->storage != NULL) {
-        uint8_t id = 0;
-        if (cfg->storage->load(cfg->storage_ctx, ANV_NODE_KEY_ID, &id, 1u) == 1u && valid_id(id)) {
-            n->id = id;
-            n->id_saved = true;
-        }
-    }
-    n->rng = 0x9E3779B9u;
-    for (unsigned i = 0; i < 6u; i++) {
-        n->rng = (n->rng ^ cfg->mac[i]) * 16777619u;
-    }
-    if (n->rng == 0u) {
-        n->rng = 1u;
-    }
     return true;
 }
 
@@ -685,7 +618,7 @@ void anv_node_begin(anv_node_t *n, uint32_t now_ms)
     n->start_ms = now_ms;
     n->cfg.outputs_off(n, n->cfg.user); /* off by default, whatever the hardware came up as */
     n->begun = true;
-    use_id(n, n->id);
+    start_on_bus(n);
     anv_node_i_ota_boot_check(n);
     if (n->params_corrupt) {
         n->params_corrupt = false;
@@ -696,16 +629,53 @@ void anv_node_begin(anv_node_t *n, uint32_t now_ms)
     }
 }
 
+/* CAN controller trouble, as events. Sent when the bus lets them out; in the black box either way
+ * (bus-off itself can't be sent, so the box is where it shows, along with `recovered`). */
+static void report_link_events(anv_node_t *n, uint32_t ev)
+{
+    const anv_link_stats_t *ls = anv_link_stats(n->cfg.link);
+    if ((ev & ANV_LINK_EV_PASSIVE) != 0u) {
+        anv_node_event(n, ANV_EVENT_CAN_ERROR_PASSIVE, ls->tec);
+    }
+    if ((ev & ANV_LINK_EV_BUS_OFF) != 0u) {
+        anv_node_event(n, ANV_EVENT_CAN_BUS_OFF, (uint16_t)ls->bus_off_count);
+    }
+    if ((ev & ANV_LINK_EV_RECOVERED) != 0u) {
+        anv_node_event(n, ANV_EVENT_CAN_BUS_OFF_RECOVERED, (uint16_t)ls->bus_off_count);
+    }
+    if ((ev & ANV_LINK_EV_RX_OVERFLOW) != 0u) {
+        anv_node_event(n, ANV_EVENT_CAN_RX_OVERFLOW, 0);
+    }
+}
+
+/* A frame from another board carrying our own node ID as its source: two boards share a DIP
+ * setting. Say so once (both boards do, each on hearing the other), then go quiet and stay in
+ * FAULT until reset, so the host sees a clear id_conflict instead of a garbled node. */
+static void on_own_id_heard(anv_node_t *n)
+{
+    n->stats.id_conflicts++;
+    if (n->id_conflict) {
+        return;
+    }
+    anv_node_event(n, ANV_EVENT_ID_CONFLICT, n->id);
+    n->id_conflict = true;
+    anv_node_set_fault(n, true); /* stays active: fault_reset can't clear it */
+}
+
 void anv_node_poll(anv_node_t *n, uint32_t now_ms)
 {
     if (!n->begun) {
         return;
     }
     n->now_ms = now_ms;
-    (void)anv_link_poll(n->cfg.link, now_ms);
+    report_link_events(n, anv_link_poll(n->cfg.link, now_ms));
 
     anv_link_frame_t f;
     while (anv_link_receive(n->cfg.link, &f)) {
+        if (anv_id_src(f.id) == n->id) {
+            on_own_id_heard(n);
+            continue; /* not ours to act on: it came from the other board */
+        }
         const uint16_t port = anv_id_port(f.id);
         const bool handled = port <= ANV_PROTOCOL_LAST_PORT ? on_protocol_frame(n, &f) : on_command_frame(n, &f);
         if (!handled && n->cfg.on_frame != NULL) {
@@ -717,20 +687,12 @@ void anv_node_poll(anv_node_t *n, uint32_t now_ms)
     anv_isotp_poll(&n->transfer, now_ms * 1000u);
     anv_node_i_ota_poll(n);
 
-    if (n->id == ANV_NODE_UNASSIGNED) {
-        if (due(now_ms, n->id_request_next_ms)) {
-            send_id_request(n);
-            n->id_request_next_ms = now_ms + ANV_NODE_ID_REQUEST_EVERY_MS +
-                                    next_random(n) % (ANV_NODE_ID_REQUEST_JITTER_MS / 2u);
-        }
-    } else {
-        if (due(now_ms, n->heartbeat_next_ms)) {
-            const uint32_t hz = anv_node_i_param_u(n, ANV_PARAM_HEARTBEAT_HZ);
-            n->heartbeat_next_ms = now_ms + 1000u / (hz == 0u ? 1u : hz);
-            send_heartbeat(n);
-        }
-        run_streams(n);
+    if (due(now_ms, n->heartbeat_next_ms)) {
+        const uint32_t hz = anv_node_i_param_u(n, ANV_PARAM_HEARTBEAT_HZ);
+        n->heartbeat_next_ms = now_ms + 1000u / (hz == 0u ? 1u : hz);
+        send_heartbeat(n);
     }
+    run_streams(n);
 
     if (n->cfg.loop != NULL) {
         n->cfg.loop(n, now_ms, n->cfg.user);
@@ -755,6 +717,11 @@ anv_node_id_t anv_node_id(const anv_node_t *n)
     return n->id;
 }
 
+bool anv_node_id_conflict(const anv_node_t *n)
+{
+    return n->id_conflict;
+}
+
 bool anv_node_has_leader(const anv_node_t *n)
 {
     return n->have_leader;
@@ -774,7 +741,6 @@ const char *anv_node_state_name(uint8_t state)
 {
     switch (state) {
     case ANV_NODE_STATE_BOOT: return "boot";
-    case ANV_NODE_STATE_UNASSIGNED: return "unassigned";
     case ANV_NODE_STATE_IDLE: return "idle";
     case ANV_NODE_STATE_ARMED: return "armed";
     case ANV_NODE_STATE_FAULT: return "fault";

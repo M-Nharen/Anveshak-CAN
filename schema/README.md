@@ -28,15 +28,15 @@ anv-schema show motor_controller             # one type: every message, bit, par
 ## Ideas in one minute
 
 - A **node** is any board on the bus. A **node type** is what kind of board it is. Types know
-  nothing about how many boards of them exist or what their IDs are: IDs are given out at run
-  time, and every node announces its type in its heartbeat.
+  nothing about how many boards of them exist or what their IDs are: each board's ID comes from
+  its DIP switches, and every node announces its type in its heartbeat.
 - Each node type declares four kinds of thing:
   - **messages** it sends (streams, events) or receives (commands);
   - **parameters**: settings a host can read and write, saved in the node's flash;
   - **actions**: things a host can ask it to do once ("zero the encoders");
   - **events**: numbered problems or happenings it reports.
-- Every node also has everything in `protocol.yaml`: heartbeat, E-stop, arm/disarm, ID
-  assignment, the parameter service, firmware updates, and common parameters such as
+- Every node also has everything in `protocol.yaml`: heartbeat, E-stop, arm/disarm,
+  the parameter service, firmware updates, and common parameters such as
   `heartbeat_hz`.
 
 ## Identifiers
@@ -56,9 +56,11 @@ bit  28   26 25          18 17               8 7           0
 | `port` | Which message. 0–63 belong to the protocol; 64–1023 to the sender's (or, for commands, the receiver's) node type. |
 | `src` | Who sent it. |
 
-- Node IDs 1–254 are given out at run time. Hosts have IDs too, from their config. 255 means
-  "no ID yet" (a new board asking for one).
-- Because `src` is in the ID, no two senders ever use the same ID, which CAN requires.
+- Node IDs 1–254 come from each board's DIP switches. Hosts have IDs too, from their config.
+  0 is broadcast and 255 is reserved; neither is ever a node ID.
+- Because `src` is in the ID, two senders never share a CAN ID as long as no two boards share a
+  node ID, which CAN requires. A node that hears its own ID from another board raises
+  `id_conflict` and goes quiet.
 - `dst` is in the top 16 bits so the ESP32's hardware filter can accept "for me" and
   "for everyone" without the CPU seeing anything else.
 - Port numbers are per node type: port 64 on a motor controller and port 64 on a sensor board

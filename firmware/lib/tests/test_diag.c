@@ -15,7 +15,7 @@ static anv_node_t *n;
 static void boot(void)
 {
     h_reset();
-    h_config(0, &anv_motor_controller_type)->fixed_id = NODE;
+    h_config(0, &anv_motor_controller_type)->node_id = NODE;
     MT_CHECK(h_start(0));
     n = &h_nodes[0].node;
 }
@@ -137,7 +137,7 @@ static void test_params_corrupt_reported(void)
 {
     h_reset();
     anv_node_config_t *c = h_config(0, &anv_motor_controller_type);
-    c->fixed_id = NODE;
+    c->node_id = NODE;
     uint8_t garbage[40]; /* long enough to pass the "nothing saved yet" check and hit the CRC one */
     memset(garbage, 0xFF, sizeof garbage);
     MT_CHECK(anv_node_memstore_ops()->save(&h_nodes[0].store, "anv_params", garbage, sizeof garbage));

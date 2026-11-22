@@ -20,7 +20,7 @@ static void boot(void)
 {
     h_reset();
     anv_node_config_t *c = h_config(0, &anv_motor_controller_type);
-    c->fixed_id = NODE;
+    c->node_id = NODE;
     c->info.chip = CHIP;
     MT_CHECK(h_start(0));
     n = &h_nodes[0].node;

@@ -17,7 +17,6 @@ def bus():
 
 
 def make_host(bus, schema, host_id: int = 1, **kw) -> anv_can.Host:
-    kw.setdefault("allocator", "off")
     kw.setdefault("node_timeout_ms", 300)
     kw.setdefault("service_timeout_ms", 200)
     return anv_can.Host(bus.connect(), schema, host_id=host_id, **kw)
@@ -152,18 +151,3 @@ def test_event_callback(bus, schema):
     h.stop()
 
 
-def test_id_assignment(bus, schema, tmp_path):
-    table = tmp_path / "ids.txt"
-    h = make_host(bus, schema, allocator="auto", id_first=40, id_last=45, id_table=str(table))
-    got = []
-    h.set_callbacks(id_assigned=lambda node, mac, type_id: got.append((node, mac, type_id)))
-    h.start()
-    n = FakeNode(bus, schema, "esp32_bench", 0, mac=0xA4CF12000009)
-    assert eventually(lambda: n.id == 40)
-    bench_id = schema.type("esp32_bench").type_id
-    assert eventually(lambda: got and got[0] == (40, 0xA4CF12000009, bench_id))
-    assert h.wait_for_node(40, 1000) and h.node(40).mac == 0xA4CF12000009
-    assert h.id_table() == [(0xA4CF12000009, 40, bench_id)]
-    assert "a4cf12000009 40" in table.read_text()
-    n.stop()
-    h.stop()

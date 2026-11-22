@@ -34,11 +34,10 @@
   "type_id": 0,
   "version": 1,
   "description": "Messages, parameters and events common to every node and host.",
-  "wire_hash": 3134267142,
+  "wire_hash": 2221918958,
   "enums": {
    "node_state": {
     "boot": 0,
-    "unassigned": 1,
     "idle": 2,
     "armed": 3,
     "fault": 4,
@@ -56,8 +55,7 @@
     "disarm": 2,
     "reset": 3,
     "fault_reset": 4,
-    "identify": 5,
-    "forget_id": 6
+    "identify": 5
    },
    "severity": {
     "info": 0,
@@ -265,8 +263,7 @@
         "disarm": 2,
         "reset": 3,
         "fault_reset": 4,
-        "identify": 5,
-        "forget_id": 6
+        "identify": 5
        }
       },
       "const": null,
@@ -526,7 +523,6 @@
        "name": "node_state",
        "values": {
         "boot": 0,
-        "unassigned": 1,
         "idle": 2,
         "armed": 3,
         "fault": 4,
@@ -665,104 +661,6 @@
       "scale": 1.0,
       "offset": 0.0,
       "unit": "s",
-      "min": null,
-      "max": null,
-      "enum": null,
-      "const": null,
-      "description": ""
-     }
-    ]
-   },
-   {
-    "name": "id_request",
-    "port": 8,
-    "priority": 4,
-    "sender": "node",
-    "kind": "event",
-    "length": 8,
-    "watchdog_ms": 0,
-    "apply": "now",
-    "rate": null,
-    "description": "A board with no ID asks for one, from src 255. Repeated with jitter until answered.",
-    "fields": [
-     {
-      "name": "mac",
-      "type": "u8",
-      "start_bit": 0,
-      "count": 6,
-      "scale": 1.0,
-      "offset": 0.0,
-      "unit": "",
-      "min": null,
-      "max": null,
-      "enum": null,
-      "const": null,
-      "description": ""
-     },
-     {
-      "name": "type_id",
-      "type": "u16",
-      "start_bit": 48,
-      "count": 1,
-      "scale": 1.0,
-      "offset": 0.0,
-      "unit": "",
-      "min": null,
-      "max": null,
-      "enum": null,
-      "const": null,
-      "description": ""
-     }
-    ]
-   },
-   {
-    "name": "id_assign",
-    "port": 9,
-    "priority": 4,
-    "sender": "host",
-    "kind": "event",
-    "length": 8,
-    "watchdog_ms": 0,
-    "apply": "now",
-    "rate": null,
-    "description": "The allocator's answer, sent to dst 255. The board checks the MAC and keeps the ID.",
-    "fields": [
-     {
-      "name": "mac",
-      "type": "u8",
-      "start_bit": 0,
-      "count": 6,
-      "scale": 1.0,
-      "offset": 0.0,
-      "unit": "",
-      "min": null,
-      "max": null,
-      "enum": null,
-      "const": null,
-      "description": ""
-     },
-     {
-      "name": "node_id",
-      "type": "u8",
-      "start_bit": 48,
-      "count": 1,
-      "scale": 1.0,
-      "offset": 0.0,
-      "unit": "",
-      "min": null,
-      "max": null,
-      "enum": null,
-      "const": null,
-      "description": ""
-     },
-     {
-      "name": "reserved",
-      "type": "u8",
-      "start_bit": 56,
-      "count": 1,
-      "scale": 1.0,
-      "offset": 0.0,
-      "unit": "",
       "min": null,
       "max": null,
       "enum": null,
@@ -1344,7 +1242,7 @@
     "code": 1543,
     "name": "id_conflict",
     "severity": "critical",
-    "description": "Another board answered with this node's ID",
+    "description": "Another board is sending with this node's ID (same DIP setting); this node goes quiet",
     "cause": ""
    },
    {
@@ -1478,13 +1376,6 @@
     "name": "lead_changed",
     "severity": "info",
     "description": "A host took the lead (detail = new leader)",
-    "cause": ""
-   },
-   {
-    "code": 32780,
-    "name": "node_id_assigned",
-    "severity": "info",
-    "description": "A board got a node ID (detail = ID)",
     "cause": ""
    },
    {

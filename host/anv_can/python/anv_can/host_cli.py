@@ -46,21 +46,17 @@ def _open(open_link: Callable[[str], Link] | None, name: str) -> Link:
     return open_socketcan(name)
 
 
-def _mac(mac: int) -> str:
-    return ":".join(f"{(mac >> s) & 0xFF:02x}" for s in range(40, -8, -8)) if mac else "-"
-
-
 def cmd_list(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
     time.sleep(a.wait)
     nodes = sorted(host.nodes(), key=lambda n: n.id)
-    print(f"{'ID':>3}  {'TYPE':<20} {'STATE':<10} {'SCHEMA':<16} {'HB Hz':>6} {'UPTIME':>7}  MAC",
+    print(f"{'ID':>3}  {'TYPE':<20} {'STATE':<10} {'SCHEMA':<16} {'HB Hz':>6} {'UPTIME':>7}",
           file=out)
     for n in nodes:
         tname = n.type.name if n.type is not None else f"type {n.type_id}"
         state = enum_label(schema, "node_state", n.state) if n.online else "offline"
         flags = (" fault" if n.fault_active else "") + (" unsaved" if n.unsaved_params else "")
         print(f"{n.id:>3}  {tname:<20} {state:<10} {n.compat:<16} {n.heartbeat_hz:>6.1f} "
-              f"{n.uptime_s:>6}s  {_mac(n.mac)}{flags}", file=out)
+              f"{n.uptime_s:>6}s{flags}", file=out)
     for h in sorted(host.hosts(), key=lambda h: h.id):
         if h.online:
             print(f"{h.id:>3}  {'(host)':<20} {h.role:<10} term {h.term}", file=out)
@@ -350,8 +346,7 @@ def main(argv: list[str] | None = None, open_link: Callable[[str], Link] | None 
     except ValueError as e:
         print(f"anv-host: {e}", file=sys.stderr)
         return 2
-    # A tool never hands out IDs: that's the job of the hosts with the rover's ID table.
-    host = Host(link, schema, host_id=a.host_id, allocator="off", command_hz=a.command_hz)
+    host = Host(link, schema, host_id=a.host_id, command_hz=a.command_hz)
     if a.cmd == "events":  # set_callbacks() only works before start()
         host.set_callbacks(event=lambda e: _print_event(e, out))
     try:

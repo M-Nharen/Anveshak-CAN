@@ -4,9 +4,6 @@
 
 #include "anv_node.h"
 
-/* Storage key of the saved node ID (settings use "anv_params", see anv_node_settings.c). */
-#define ANV_NODE_KEY_ID "anv_id"
-
 bool anv_node_i_armed(const anv_node_t *n);
 bool anv_node_i_send(anv_node_t *n, uint8_t priority, anv_node_id_t dst, uint16_t port, const uint8_t *data,
                      uint8_t len);

@@ -5,7 +5,9 @@
 
 #include <string.h>
 
+#include "driver/gpio.h"
 #include "esp_mac.h"
+#include "esp_rom_sys.h"
 #include "esp_system.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -97,6 +99,26 @@ void anv_node_esp32_identity(anv_node_config_t *cfg, anv_node_nvs_t *nvs)
         (void)store_save(nvs, BOOT_COUNT_KEY, &boots, sizeof boots);
         cfg->info.boot_count = boots;
     }
+}
+
+uint8_t anv_node_esp32_read_dip(const int *pins, uint8_t n)
+{
+    if (n > 8u) {
+        n = 8u;
+    }
+    for (uint8_t i = 0; i < n; i++) {
+        gpio_reset_pin((gpio_num_t)pins[i]);
+        gpio_set_direction((gpio_num_t)pins[i], GPIO_MODE_INPUT);
+        gpio_set_pull_mode((gpio_num_t)pins[i], GPIO_PULLUP_ONLY);
+    }
+    esp_rom_delay_us(100); /* let the pull-ups charge the lines */
+    uint8_t v = 0;
+    for (uint8_t i = 0; i < n; i++) {
+        if (gpio_get_level((gpio_num_t)pins[i]) == 0) {
+            v |= (uint8_t)(1u << i);
+        }
+    }
+    return v;
 }
 
 void anv_node_esp32_restart(anv_node_t *node, void *user)

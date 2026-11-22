@@ -130,18 +130,18 @@ TEST(service_and_arrays_match_c) {
                                    {"value", one(uint64_t{0xDEADBEEF})}}),
              out, n));
 
-  anv_id_request_t r{};
-  const uint8_t mac[6] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC};
-  std::memcpy(r.mac, mac, 6);
-  r.type_id = 2;
-  n = anv_id_request_pack(out, &r);
+  anv_text_t tx{};
+  const uint8_t chars[7] = {'h', 'e', 'l', 'l', 'o', 0, 0};
+  tx.seq = 9;
+  std::memcpy(tx.chars, chars, 7);
+  n = anv_text_pack(out, &tx);
   FieldValue m;
-  for (uint8_t b : mac) m.push_back(int64_t{b});
-  CHECK(same(enc(pmsg("id_request"), {{"mac", m}, {"type_id", one(int64_t{2})}}), out, n));
+  for (uint8_t b : chars) m.push_back(int64_t{b});
+  CHECK(same(enc(pmsg("text"), {{"seq", one(int64_t{9})}, {"chars", m}}), out, n));
   // an array of the wrong length is refused
   std::vector<uint8_t> bytes;
   std::string err;
-  CHECK(!encode(pmsg("id_request"), {{"mac", FieldValue{int64_t{1}, int64_t{2}}}}, bytes, &err));
+  CHECK(!encode(pmsg("text"), {{"seq", one(int64_t{1})}, {"chars", FieldValue{int64_t{1}, int64_t{2}}}}, bytes, &err));
 }
 
 TEST(scaled_signed_matches_c) {

@@ -35,7 +35,7 @@ static uint8_t svc(uint8_t op, uint16_t index, uint32_t value)
 
 static void boot(void)
 {
-    h_config(0, &anv_motor_controller_type)->fixed_id = NODE;
+    h_config(0, &anv_motor_controller_type)->node_id = NODE;
     MT_CHECK(h_start(0));
 }
 
@@ -164,8 +164,9 @@ static void test_storage_problems(void)
     MT_CHECK(anv_node_get(&h_nodes[0].node, KP_0, &v) && v.f == 10.0f);
 
     /* No storage at all. */
-    h_config(1, &anv_motor_controller_type)->fixed_id = 11;
-    h_config(1, &anv_motor_controller_type)->storage = NULL;
+    anv_node_config_t *c = h_config(1, &anv_motor_controller_type);
+    c->node_id = 11;
+    c->storage = NULL;
     MT_CHECK(h_start(1));
     MT_CHECK(anv_node_save(&h_nodes[1].node) == ANV_SERVICE_STATUS_STORAGE_ERROR);
 }

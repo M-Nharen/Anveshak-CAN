@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None, open_link=None, out: TextIO | None = Non
         print(f"anv-flash: {e}", file=sys.stderr)
         return 2
     # Discovery only: anv-flash never leads or arms anything.
-    host = Host(host_link, schema, host_id=a.tool_id, allocator="off", observer=True)
+    host = Host(host_link, schema, host_id=a.tool_id, observer=True)
     try:
         host.start()
         if a.cmd == "list":

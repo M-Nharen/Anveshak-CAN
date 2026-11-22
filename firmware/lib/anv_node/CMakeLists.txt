@@ -7,7 +7,7 @@ if(ESP_PLATFORM)
     SRCS src/anv_node.c src/anv_node_settings.c src/anv_node_memstore.c src/anv_node_protocol.c
          src/anv_node_esp32.c src/anv_node_diag.c src/anv_node_ota.c src/anv_node_ota_esp32.c
     INCLUDE_DIRS src ${ANV_SCHEMA_C_DIR}
-    REQUIRES anv_link anv_proto nvs_flash esp_system esp_hw_support app_update)
+    REQUIRES anv_link anv_proto nvs_flash esp_system esp_hw_support app_update esp_driver_gpio esp_rom)
   return()
 endif()
 

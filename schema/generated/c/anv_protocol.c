@@ -182,58 +182,6 @@ bool anv_heartbeat_unpack(anv_heartbeat_t *m, const uint8_t *data, uint8_t len)
     return true;
 }
 
-uint8_t anv_id_request_pack(uint8_t out[8], const anv_id_request_t *m)
-{
-    uint64_t v = 0;
-    for (unsigned i = 0; i < 6u; i++) {
-        v |= anv_bits_put((uint64_t)m->mac[i], (uint8_t)(0u + i * 8u), 8u);
-    }
-    v |= anv_bits_put((uint64_t)m->type_id, 48u, 16u);
-    memset(out, 0, 8);
-    anv_bits_store(v, out, 8u);
-    return 8u;
-}
-
-bool anv_id_request_unpack(anv_id_request_t *m, const uint8_t *data, uint8_t len)
-{
-    if (len < 8u) {
-        return false;
-    }
-    uint64_t v = anv_bits_load(data, 8u);
-    for (unsigned i = 0; i < 6u; i++) {
-        m->mac[i] = (uint8_t)anv_bits_get(v, (uint8_t)(0u + i * 8u), 8u);
-    }
-    m->type_id = (uint16_t)anv_bits_get(v, 48u, 16u);
-    return true;
-}
-
-uint8_t anv_id_assign_pack(uint8_t out[8], const anv_id_assign_t *m)
-{
-    uint64_t v = 0;
-    for (unsigned i = 0; i < 6u; i++) {
-        v |= anv_bits_put((uint64_t)m->mac[i], (uint8_t)(0u + i * 8u), 8u);
-    }
-    v |= anv_bits_put((uint64_t)m->node_id, 48u, 8u);
-    v |= anv_bits_put((uint64_t)m->reserved, 56u, 8u);
-    memset(out, 0, 8);
-    anv_bits_store(v, out, 8u);
-    return 8u;
-}
-
-bool anv_id_assign_unpack(anv_id_assign_t *m, const uint8_t *data, uint8_t len)
-{
-    if (len < 8u) {
-        return false;
-    }
-    uint64_t v = anv_bits_load(data, 8u);
-    for (unsigned i = 0; i < 6u; i++) {
-        m->mac[i] = (uint8_t)anv_bits_get(v, (uint8_t)(0u + i * 8u), 8u);
-    }
-    m->node_id = (uint8_t)anv_bits_get(v, 48u, 8u);
-    m->reserved = (uint8_t)anv_bits_get(v, 56u, 8u);
-    return true;
-}
-
 uint8_t anv_service_pack(uint8_t out[8], const anv_service_t *m)
 {
     uint64_t v = 0;
@@ -348,8 +296,6 @@ const anv_msg_desc_t anv_protocol_messages[] = {
     {4u, 0u, ANV_KIND_STREAM, ANV_SENDER_HOST, 8u, 0u, 0u, 20000u, 10000u, 50000u, ANV_NAME("host_heartbeat")},
     {5u, 1u, ANV_KIND_EVENT, ANV_SENDER_HOST, 2u, 0u, 0u, 0u, 0u, 0u, ANV_NAME("lead_request")},
     {6u, 5u, ANV_KIND_STREAM, ANV_SENDER_NODE, 8u, 0u, 0u, 10000u, 1000u, 50000u, ANV_NAME("heartbeat")},
-    {8u, 4u, ANV_KIND_EVENT, ANV_SENDER_NODE, 8u, 0u, 0u, 0u, 0u, 0u, ANV_NAME("id_request")},
-    {9u, 4u, ANV_KIND_EVENT, ANV_SENDER_HOST, 8u, 0u, 0u, 0u, 0u, 0u, ANV_NAME("id_assign")},
     {10u, 4u, ANV_KIND_EVENT, ANV_SENDER_ANY, 8u, 0u, 0u, 0u, 0u, 0u, ANV_NAME("service")},
     {11u, 6u, ANV_KIND_FRAME, ANV_SENDER_ANY, 8u, 0u, 0u, 0u, 0u, 0u, ANV_NAME("transfer")},
     {12u, 3u, ANV_KIND_EVENT, ANV_SENDER_ANY, 8u, 0u, 0u, 0u, 0u, 0u, ANV_NAME("event")},
@@ -407,14 +353,13 @@ const anv_event_desc_t anv_protocol_events[] = {
     {0x8009u, 1u, ANV_NAME("bus_error_burst")},
     {0x800au, 0u, ANV_NAME("no_leader")},
     {0x800bu, 0u, ANV_NAME("lead_changed")},
-    {0x800cu, 0u, ANV_NAME("node_id_assigned")},
     {0x800du, 1u, ANV_NAME("unknown_type")},
 };
 
 const anv_type_desc_t anv_protocol_type = {
-    ANV_NAME("protocol"), 0u, 1u, 0xbad11f06u,
-    anv_protocol_messages, 14u,
+    ANV_NAME("protocol"), 0u, 1u, 0x846fcaeeu,
+    anv_protocol_messages, 12u,
     anv_protocol_params, 6u,
     anv_protocol_actions, 0u,
-    anv_protocol_events, 40u,
+    anv_protocol_events, 39u,
 };

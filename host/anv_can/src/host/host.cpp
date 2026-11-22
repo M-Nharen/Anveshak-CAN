@@ -136,8 +136,6 @@ Host::Host(Link& link, std::shared_ptr<const Schema> schema, HostConfig config)
       m_host_hb_(need(*schema_, "host_heartbeat")),
       m_lead_req_(need(*schema_, "lead_request")),
       m_hb_(need(*schema_, "heartbeat")),
-      m_id_req_(need(*schema_, "id_request")),
-      m_id_assign_(need(*schema_, "id_assign")),
       m_service_(need(*schema_, "service")),
       m_event_(need(*schema_, "event")),
       m_debug_level_(need(*schema_, "debug_level")),
@@ -150,10 +148,7 @@ Host::Host(Link& link, std::shared_ptr<const Schema> schema, HostConfig config)
         e.leader_timeout_ns = config.leader_timeout_ms * kMs;
         return e;
       }()),
-      registry_(*schema_, RegistryConfig{config.node_timeout_ms * kMs}),
-      allocator_(static_cast<uint8_t>(config.id_first ? config.id_first : schema_->node_ids.first),
-                 static_cast<uint8_t>(config.id_last ? config.id_last : schema_->node_ids.last),
-                 config.id_table_path) {}
+      registry_(*schema_, RegistryConfig{config.node_timeout_ms * kMs}) {}
 
 Host::~Host() { stop(); }
 
@@ -165,8 +160,8 @@ bool Host::set_callbacks(HostCallbacks callbacks) {
 
 bool Host::start(std::string* error) {
   if (running_) return true;
-  for (const Message* m : {m_estop_, m_estop_release_, m_sync_, m_nmt_, m_host_hb_, m_lead_req_, m_hb_, m_id_req_,
-                           m_id_assign_, m_service_, m_event_, m_debug_level_}) {
+  for (const Message* m : {m_estop_, m_estop_release_, m_sync_, m_nmt_, m_host_hb_, m_lead_req_, m_hb_,
+                           m_service_, m_event_, m_debug_level_}) {
     // A schema without these isn't the v2 protocol; nothing sensible can run on it.
     if (m == nullptr) {
       if (error) *error = "the schema's protocol is missing a message anv_host needs";
@@ -181,8 +176,6 @@ bool Host::start(std::string* error) {
   }
   {
     std::lock_guard<std::mutex> lk(mu_);
-    if (!allocator_.load(error)) return false;
-    for (const Assignment& a : allocator_.table()) registry_.set_mac(a.node_id, a.mac);
     election_.start();
     start_ns_ = now_ns();
     next_hb_ns_ = start_ns_;
@@ -275,8 +268,6 @@ void Host::handle(const Frame& f, int64_t now, Notify& out) {
     std::vector<RegistryEvent> rev;
     registry_.on_heartbeat(hb, now, rev);
     on_registry(rev, out);
-  } else if (m == m_id_req_) {
-    if (src == schema_->node_ids.unassigned) handle_id_request(src, v, out);
   } else if (m == m_service_) {
     handle_service(src, dst, v, out);
   } else if (m == m_estop_) {
@@ -302,51 +293,6 @@ void Host::handle(const Frame& f, int64_t now, Notify& out) {
     out.push_back([this, e] { cb_.event(e); });
   }
   on_election(ev, now, out);
-}
-
-void Host::handle_id_request(uint8_t /*src*/, const Values& v, Notify& out) {
-  if (!should_allocate()) return;
-  uint8_t mac_bytes[6];
-  for (size_t i = 0; i < 6; ++i) mac_bytes[i] = static_cast<uint8_t>(num(v, "mac", i));
-  const uint64_t mac = IdAllocator::mac_from_bytes(mac_bytes);
-  const uint16_t type_id = static_cast<uint16_t>(num(v, "type_id"));
-  const auto in_use = [&](uint8_t id) {
-    if (id == cfg_.host_id) return true;
-    auto peers = election_.peers().find(id);
-    if (peers != election_.peers().end() && peers->second.online) return true;
-    if (!registry_.online(id)) return false;
-    // A board that lost its ID (forget_id, new flash) may ask again while still listed under it.
-    const Assignment* a = allocator_.find_by_node(id);
-    return a == nullptr || a->mac != mac;
-  };
-  std::string save_error;
-  const uint8_t id = allocator_.assign(mac, type_id, in_use, &save_error);
-  if (id == 0) return;  // every ID in use: say nothing, the board keeps asking
-  registry_.set_mac(id, mac);
-  Values a;
-  FieldValue mac_field;
-  for (uint8_t b : mac_bytes) mac_field.push_back(u(b));
-  a["mac"] = mac_field;
-  a["node_id"] = one(u(id));
-  send_msg(*m_id_assign_, a, schema_->node_ids.unassigned);
-  if (cb_.id_assigned) out.push_back([this, id, mac, type_id] { cb_.id_assigned(id, mac, type_id); });
-}
-
-bool Host::should_allocate() const {
-  switch (cfg_.allocator) {
-    case HostConfig::Allocator::Off: return false;
-    case HostConfig::Allocator::Always: return true;
-    case HostConfig::Allocator::Auto: break;
-  }
-  if (election_.leading()) return true;
-  if (election_.leader() != 0 || cfg_.observer) return false;
-  // Nobody leads yet (bring-up): the lowest-numbered host that could lead answers, so two
-  // hosts never hand out IDs from two different tables.
-  for (const auto& kv : election_.peers()) {
-    const PeerHost& p = kv.second;
-    if (p.online && p.role != Role::Observer && p.id < cfg_.host_id) return false;
-  }
-  return true;
 }
 
 void Host::handle_service(uint8_t src, uint8_t dst, const Values& v, Notify& out) {
@@ -537,11 +483,6 @@ std::vector<PeerHost> Host::hosts() const {
   return out;
 }
 
-std::vector<Assignment> Host::id_table() const {
-  std::lock_guard<std::mutex> lk(mu_);
-  return allocator_.table();
-}
-
 bool Host::wait_for_node(uint8_t id, int timeout_ms) {
   std::unique_lock<std::mutex> lk(mu_);
   return cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms), [&] { return !running_ || registry_.online(id); }) &&
@@ -618,13 +559,6 @@ void Host::set_operator_link(bool up) {
 void Host::set_autonomy_ready(bool ready) {
   std::lock_guard<std::mutex> lk(mu_);
   autonomy_ready_ = ready;
-}
-
-bool Host::pin_id(uint64_t mac, uint8_t node_id, uint16_t type_id, std::string* error) {
-  std::lock_guard<std::mutex> lk(mu_);
-  if (!allocator_.pin(mac, node_id, type_id, error)) return false;
-  registry_.set_mac(node_id, mac);
-  return true;
 }
 
 // --- service clients ---------------------------------------------------------------------
