@@ -3,8 +3,9 @@
 > **Out of date on this branch.** The services this page installs (`anv-gateway`, the dashboard)
 > are the old 11-bit system and don't talk to the v2 bench sketch. Node IDs now come from each
 > board's DIP switches, not from the RPi. Until the v2 bench gateway lands, use the v2 tools on
-> the Pi directly: `pip install ./host/anv_can`, then `anv-host list can1`, `anv-can dump can1`,
-> `anv-flash flash can1 <node> image.bin`. The wiring (section 1) and CAN HAT overlays still apply.
+> the Pi directly: run `host/tools/pi/setup.sh` once (see `host/tools/pi/README.md`), then
+> `anv-host list can1`, `anv-can dump can1`, and `anv-build <sketch> <node> --can can1` to build and
+> flash a node. The wiring (section 1) and CAN HAT overlays still apply.
 
 One Raspberry Pi (Pi OS Bookworm or Ubuntu/Xubuntu desktop) with a Waveshare **2-CH CAN HAT**, a **7" 1024×600 HDMI touch screen**, and a few ESP32
 boards (WROOM or S3) running `firmware/nodes/bench_esp32_arduino`. The RPi gives each board a node ID,

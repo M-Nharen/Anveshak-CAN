@@ -16,7 +16,7 @@ widths, ports, layouts, enums. Nothing here knows how many nodes there are or wh
 | `anv/host/host.hpp` | `Host`: a brain on the bus (below) |
 | `anv/host/election.hpp` | Leader election rules, pure logic with a fake clock |
 | `anv/host/registry.hpp` | Node registry: discovery from heartbeats, type lookup, schema check, online/offline |
-| `python/` | pybind11 module `anv_can` and the `anv-can`, `anv-host` and `anv-flash` tools |
+| `python/` | pybind11 module `anv_can` and the `anv-can`, `anv-host`, `anv-flash` and `anv-build` tools |
 
 Frames are byte-identical to the ESP32 side: `tests/test_proto.cpp` compares against the
 generated C, and `python/tests/test_cross_check.py` compares every message with random vectors
@@ -154,3 +154,24 @@ bytes); END checks the CRC-32 and, if it matches, the node applies the image and
 image is on probation (`anv_node`'s own confirm timer) until it proves itself; if it never does,
 the next boot rolls back on its own — `anv-flash` doesn't need to do anything for that part.
 `--force` sends ABORT first, for a node left mid-update by an earlier failed attempt.
+
+## `anv-build`
+
+Builds an ESP32 sketch with `arduino-cli` on this machine and flashes it: over USB with `--usb`,
+or over CAN with `--can` (the `anv-flash` protocol above). Set the machine up once with
+`host/tools/pi/setup.sh`; the full guide is `host/tools/pi/README.md`.
+
+```sh
+anv-build --check                                          # arduino-cli + esp32 core ready?
+anv-build my_node --chip esp32s3 -o ~/                     # build only
+anv-build my_node --usb /dev/ttyUSB0 --chip esp32          # build + upload over USB
+anv-build my_node 17 --can can1                            # node 17's chip, flash over CAN
+anv-build my_node type:wheel --can can1                    # every node of a type
+```
+
+It regenerates `schema/generated/` if a YAML changed, fills a work copy's `src/schema/` with the
+generated files of the types the sketch includes, passes `--library` for `anv_link`, `anv_proto`
+and `anv_node`, and keeps one build folder per sketch and chip (`~/.cache/anveshak/build/`). Over
+CAN it builds once per chip, labels the image with the sketch's node type (a board running another
+type refuses it), and uses the repo's `schema/generated/schema.json`, so a new type needs no
+reinstall.

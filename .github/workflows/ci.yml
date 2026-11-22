@@ -95,6 +95,41 @@ jobs:
               firmware/nodes/bench_esp32_arduino
           done
 
+  # The Raspberry Pi build flow, end to end: host/tools/pi/setup.sh as a user would run it, then
+  # anv-build. ubuntu-24.04-arm is the same CPU type as a Pi 4/5 on 64-bit Raspberry Pi OS, so this
+  # proves the ESP32 core's arm64 compilers install and run.
+  pi-build-flow:
+    name: Pi setup + anv-build (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: host/tools/pi/setup.sh (no CAN hardware here, no warm-up build)
+        run: host/tools/pi/setup.sh --can "" --no-warm
+
+      - name: anv-build --check
+        run: ~/.local/bin/anv-build --check
+
+      - name: Build the bench sketch for the ESP32 (WROOM) and the ESP32-S3
+        run: |
+          for chip in esp32 esp32s3; do
+            ~/.local/bin/anv-build firmware/nodes/bench_esp32_arduino --chip "$chip" -o "$RUNNER_TEMP"
+          done
+          ls -l "$RUNNER_TEMP"/*.bin
+
+      - name: A sketch outside the repo with no src/schema (anv-build fills it in)
+        run: |
+          mkdir -p "$RUNNER_TEMP/plain_node"
+          cp firmware/nodes/bench_esp32_arduino/*.{h,cpp} "$RUNNER_TEMP/plain_node/"
+          cp firmware/nodes/bench_esp32_arduino/bench_esp32_arduino.ino "$RUNNER_TEMP/plain_node/plain_node.ino"
+          ANV_REPO="$PWD" ~/.local/bin/anv-build "$RUNNER_TEMP/plain_node" --chip esp32s3
+          # a second build reuses the build folder: only what changed is compiled
+          time ANV_REPO="$PWD" ~/.local/bin/anv-build "$RUNNER_TEMP/plain_node" --chip esp32s3
+
   # v2 libraries (firmware/lib): the Linux unit tests run in the firmware job above. These build the
   # same folders for the ESP32 the three supported ways: Arduino, ESP-IDF and PlatformIO.
   lib-esp32-arduino:

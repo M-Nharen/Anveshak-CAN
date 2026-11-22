@@ -45,6 +45,8 @@ FIRMWARE (ESP32, C)                       HOST (C++ and Python)
 
 ## Using what works today (`next`)
 
+- **Build and flash ESP32 nodes from the Raspberry Pi** (`setup.sh` once, then `anv-build`:
+  USB for a new board, CAN after that): `host/tools/pi/README.md`.
 - **The bench** (RPi + CAN HAT + touch screen + ESP32s): `host/tools/rpi-bench/README.md`.
 - **The ESP32 node sketch**: `firmware/nodes/bench_esp32_arduino/README.md`.
 - **No hardware**: `host/sim` simulates nodes on a virtual bus; see "Without any hardware" in the

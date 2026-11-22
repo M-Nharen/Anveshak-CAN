@@ -20,13 +20,14 @@ so it shows up in the v2 host tools (L4), not the old dashboard. The old sketch 
 3. Open `bench_esp32_arduino.ino`, pick **ESP32 Dev Module** (WROOM) or **ESP32S3 Dev Module**, and
    upload. Open the Serial Monitor at 115200 baud.
 
-Command line:
+From the Raspberry Pi (or any Linux machine set up with `host/tools/pi/setup.sh`), without the IDE:
 
 ```sh
-arduino-cli compile --fqbn esp32:esp32:esp32s3 \
-  --library firmware/lib/anv_link --library firmware/lib/anv_proto --library firmware/lib/anv_node \
-  firmware/nodes/bench_esp32_arduino
+anv-build firmware/nodes/bench_esp32_arduino --usb /dev/ttyUSB0 --chip esp32   # first time, USB
+anv-build firmware/nodes/bench_esp32_arduino 17 --can can1                      # after that, CAN
 ```
+
+`anv-build` fills `src/schema/` and passes the three libraries itself; see `host/tools/pi/README.md`.
 
 ## Wiring (`board_pins.h`)
 

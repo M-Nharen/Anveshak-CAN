@@ -76,7 +76,8 @@ host/                      person B
   ros2/anveshak_can_ros/   ROS 2 node wrapping the gateway (Humble + Jazzy)
   ros2/anveshak_can_msgs/  ROS 2 messages and services
   sim/                     Python node simulator
-  tools/                   anv-flash and other Python tools
+  tools/                   old 11-bit anv-flash and other Python tools
+  tools/pi/                setup.sh: makes a Pi the build + flash machine (arduino-cli, anv-build)
 dashboard/                 person B
   backend/                 FastAPI + WebSocket
   frontend/                Svelte + uPlot
