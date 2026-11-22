@@ -7,6 +7,7 @@
 #   host/tools/pi/setup.sh                    # everything, CAN interfaces can0 and can1
 #   host/tools/pi/setup.sh --can "can1"       # only bring up can1 at boot
 #   host/tools/pi/setup.sh --no-warm          # skip the first (slow) test build
+#   host/tools/pi/setup.sh --bitrate 250000   # CAN speed (default 500000; nodes must match)
 #
 # Run it as your normal user, from anywhere inside the repository; it asks for sudo when needed.
 set -euo pipefail
@@ -14,7 +15,7 @@ set -euo pipefail
 ARDUINO_CLI_VERSION=1.3.1
 ESP32_CORE=esp32:esp32@3.3.12   # keep in step with .github/workflows/ci.yml
 ESP32_INDEX=https://espressif.github.io/arduino-esp32/package_esp32_index.json
-BITRATE=500000
+BITRATE=500000                  # --bitrate; every node's sketch must use the same (lc.bitrate)
 VENV="$HOME/anv-venv"
 BIN="$HOME/.local/bin"
 
@@ -23,8 +24,9 @@ warm=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --can) can_ifaces="$2"; shift 2 ;;
+    --bitrate) BITRATE="$2"; shift 2 ;;
     --no-warm) warm=0; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
