@@ -136,6 +136,17 @@ ExecStop=/sbin/ip link set %i down
 WantedBy=sys-subsystem-net-devices-%i.device
 EOF
 sudo systemctl daemon-reload
+# The same CAN overlay loaded twice: the later line's parameters win, which has silently undone a
+# spimaxfrequency= limit and made a channel fail with "didn't enter in config mode".
+cfg=/boot/firmware/config.txt; [[ -f $cfg ]] || cfg=/boot/config.txt
+if [[ -f $cfg ]]; then
+  dups="$(grep -oE '^[[:space:]]*dtoverlay=mcp251[0-9a-z]*-can[0-9]+' "$cfg" | tr -d ' \t' | sort | uniq -d)"
+  if [[ -n $dups ]]; then
+    echo "warning: $cfg loads the same CAN overlay more than once:"
+    grep -nE "^[[:space:]]*dtoverlay=mcp251" "$cfg" | sed 's/^/    /'
+    echo "  The later line wins (e.g. dropping a spimaxfrequency= set earlier). Keep one per channel."
+  fi
+fi
 missing=()
 for i in $can_ifaces; do
   sudo systemctl enable "anv-can@$i.service" >/dev/null 2>&1
