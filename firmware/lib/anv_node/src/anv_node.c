@@ -180,6 +180,9 @@ static const anv_msg_desc_t *find_type_msg(const anv_node_t *n, uint16_t port)
 
 bool anv_node_send(anv_node_t *n, uint16_t port, const uint8_t *data, uint8_t len)
 {
+    if (!n->ready) {
+        return false; /* anv_node_init failed: do nothing */
+    }
     const anv_msg_desc_t *m = find_type_msg(n, port);
     if (m == NULL || m->kind == ANV_KIND_COMMAND || len > 8u) {
         return false;
@@ -189,6 +192,9 @@ bool anv_node_send(anv_node_t *n, uint16_t port, const uint8_t *data, uint8_t le
 
 bool anv_node_send_frame(anv_node_t *n, anv_link_frame_t *frame)
 {
+    if (!n->ready) {
+        return false; /* anv_node_init failed: do nothing */
+    }
     if (n->id_conflict) {
         n->stats.tx_dropped++;
         return false;
@@ -306,6 +312,9 @@ static void latch_estop(anv_node_t *n)
 
 void anv_node_estop(anv_node_t *n, uint8_t reason)
 {
+    if (!n->ready) {
+        return; /* anv_node_init failed: do nothing */
+    }
     latch_estop(n);
     const anv_estop_t e = {0xE5u, reason};
     uint8_t data[8];
@@ -315,6 +324,9 @@ void anv_node_estop(anv_node_t *n, uint8_t reason)
 
 void anv_node_set_fault(anv_node_t *n, bool active)
 {
+    if (!n->ready) {
+        return; /* anv_node_init failed: do nothing */
+    }
     n->fault_active = active;
     if (active) {
         n->fault_latched = true;
@@ -325,6 +337,9 @@ void anv_node_set_fault(anv_node_t *n, bool active)
 
 void anv_node_disarm(anv_node_t *n)
 {
+    if (!n->ready) {
+        return; /* anv_node_init failed: do nothing */
+    }
     disarm(n);
 }
 
@@ -609,11 +624,15 @@ bool anv_node_init(anv_node_t *n, const anv_node_config_t *cfg)
     anv_node_i_load_defaults(n);
     anv_node_i_load_saved(n);
     anv_node_i_diag_load(n);
+    n->ready = true;
     return true;
 }
 
 void anv_node_begin(anv_node_t *n, uint32_t now_ms)
 {
+    if (!n->ready) {
+        return; /* init failed (e.g. node ID 0 from unset DIP switches): stay off the bus */
+    }
     n->now_ms = now_ms;
     n->start_ms = now_ms;
     n->cfg.outputs_off(n, n->cfg.user); /* off by default, whatever the hardware came up as */

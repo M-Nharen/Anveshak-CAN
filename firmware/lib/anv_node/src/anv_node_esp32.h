@@ -39,7 +39,7 @@ void anv_node_esp32_restart(anv_node_t *node, void *user);
  * GPIO 34-39 on the classic ESP32) and not a strapping pin.
  *
  *   static const int dip_pins[] = {13, 14, 25, 26};
- *   cfg.node_id = 16 + anv_node_esp32_read_dip(dip_pins, 4);   // your own base: 16..31
+ *   cfg.node_id = anv_node_esp32_read_dip(dip_pins, 4);   // switches = ID: 1..15 (0 = invalid)
  */
 uint8_t anv_node_esp32_read_dip(const int *pins, uint8_t n);
 

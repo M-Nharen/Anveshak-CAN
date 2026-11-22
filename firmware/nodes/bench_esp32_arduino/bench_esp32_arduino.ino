@@ -35,6 +35,7 @@ static bool s_diag = true;
 static uint32_t s_blink_until = 0;
 static uint8_t s_text_seq = 0;
 static uint8_t s_dip = 0;
+static bool s_node_ok = false;  // false: bad node ID (DIP switches all off) or init failed
 
 // A build ID that changes with every compile, for the info page (the hosts show it).
 static uint32_t build_id() {
@@ -234,8 +235,11 @@ void setup() {
   s_can_ok = anv_link_start(&s_link, &link_cfg) == ANV_LINK_OK;
   if (!s_can_ok) Serial.println("TWAI start FAILED: check the pins in board_pins.h");
 
-  if (!anv_node_init(&s_node, &cfg)) {
-    Serial.println("anv_node_init FAILED");  // only if the type outgrew the tables
+  s_node_ok = anv_node_init(&s_node, &cfg);
+  if (!s_node_ok) {
+    Serial.printf("anv_node_init FAILED: node ID %u is not valid (1-254). Set the DIP switches "
+                  "(all off = 0) and reset. The board stays off the bus until then.\n",
+                  unsigned(cfg.node_id));
   }
   anv_node_begin(&s_node, millis());
   Serial.printf("Node ID %u (DIP switches = %u)\n", anv_node_id(&s_node), s_dip);
@@ -251,7 +255,7 @@ void loop() {
       mode = LedMode::BusOff;
     } else if ((int32_t)(now - s_blink_until) < 0) {
       mode = LedMode::Identify;
-    } else if (anv_node_id_conflict(&s_node)) {
+    } else if (!s_node_ok || anv_node_id_conflict(&s_node)) {
       mode = LedMode::IdConflict;
     } else {
       mode = LedMode::Running;

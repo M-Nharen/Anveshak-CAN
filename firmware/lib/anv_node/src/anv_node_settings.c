@@ -198,6 +198,9 @@ void anv_node_i_load_saved(anv_node_t *n)
 
 uint8_t anv_node_save(anv_node_t *n)
 {
+    if (!n->ready) {
+        return ANV_SERVICE_STATUS_FAILED; /* anv_node_init failed: do nothing */
+    }
     const anv_node_storage_t *st = n->cfg.storage;
     if (st == NULL) {
         return ANV_SERVICE_STATUS_STORAGE_ERROR;
@@ -286,11 +289,17 @@ uint8_t anv_node_i_set_param(anv_node_t *n, uint16_t index, anv_value_t v, bool 
 
 uint8_t anv_node_set(anv_node_t *n, uint16_t index, anv_value_t value)
 {
+    if (!n->ready) {
+        return ANV_SERVICE_STATUS_FAILED; /* anv_node_init failed: do nothing */
+    }
     return anv_node_i_set_param(n, index, value, false);
 }
 
 uint8_t anv_node_restore_defaults(anv_node_t *n)
 {
+    if (!n->ready) {
+        return ANV_SERVICE_STATUS_FAILED; /* anv_node_init failed: do nothing */
+    }
     if (anv_node_i_armed(n)) {
         return ANV_SERVICE_STATUS_NOT_WHILE_ARMED;
     }
@@ -328,6 +337,9 @@ uint32_t anv_node_stream_rate(const anv_node_t *n, uint16_t port)
 
 uint8_t anv_node_set_stream_rate(anv_node_t *n, uint16_t port, uint32_t rate_mhz)
 {
+    if (!n->ready) {
+        return ANV_SERVICE_STATUS_FAILED; /* anv_node_init failed: do nothing */
+    }
     const int i = find_stream(n, port);
     if (i < 0) {
         return ANV_SERVICE_STATUS_BAD_INDEX;

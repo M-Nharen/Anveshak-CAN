@@ -37,10 +37,11 @@
 #error "bench_esp32_arduino supports the ESP32 (WROOM) and the ESP32-S3"
 #endif
 
-/* Node ID = BENCH_DIP_ID_BASE + the DIP value: 16..31 with four switches. Every board on the bus
- * needs a different setting; two boards on the same one both flag id_conflict and go quiet.
- * Keep IDs clear of the hosts' (1 = Orin, 2 = RPi, 250 = the CLI tools). */
-#define BENCH_DIP_ID_BASE 16
+/* Node ID = BENCH_DIP_ID_BASE + the DIP value. With base 0 the switches ARE the ID: 1..15 with four
+ * switches; all off (0) is not a valid ID, so the board refuses to start and says so. Every board
+ * on the bus needs a different setting; two boards on the same one both flag id_conflict and go
+ * quiet. Hosts sit at the top (250 = the CLI tools, 251 = Orin, 252 = RPi), out of the way. */
+#define BENCH_DIP_ID_BASE 0
 
 /* TCAN STB is tied to GND on the bench boards. If a board drives it from a GPIO instead, set the
  * pin here: the sketch drives it low (normal mode) at boot. -1 = not connected. */

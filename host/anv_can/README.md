@@ -78,7 +78,8 @@ looked up in the schema by `type_id`.
   `schema_mismatch` and nothing is decoded from or asked of it. Offline after
   `node_timeout_ms` (or 3.5 heartbeat periods, if longer).
 - **IDs.** Node IDs are the boards' own (DIP switches); a host never hands IDs out. A host's own
-  ID is `host_id` in its config (1 = Orin, 2 = RPi by convention; the CLI tools use 250).
+  ID is `host_id` in its config. Hosts sit at the top of the range, out of the nodes' way: 250 = the
+  CLI tools, 251 = Orin, 252 = RPi (by convention). Nodes use 1–249.
 - **Leadership.** docs/architecture.md "Hosts: choosing which one leads", for any hosts with
   any IDs: start standby, claim only when a `lead_request` names you (`request_lead()`) or with
   `auto_takeover`, higher term wins, then lower `tie_break`, then lower ID. `observer` hosts
@@ -99,7 +100,7 @@ holds.
 ```python
 import anv_can
 s = anv_can.load_schema()
-host = anv_can.Host(anv_can.open_socketcan("can0"), s, host_id=1, id_table="/var/lib/anv/ids.txt")
+host = anv_can.Host(anv_can.open_socketcan("can0"), s, host_id=252)
 host.set_callbacks(node_appeared=lambda n, returned: print("hello", n),
                    telemetry=lambda node, msg, values, ts: print(node, msg, values))
 host.start()

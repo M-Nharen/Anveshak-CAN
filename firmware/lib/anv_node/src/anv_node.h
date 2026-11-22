@@ -178,6 +178,7 @@ struct anv_node_s {
     uint32_t heartbeat_next_ms;
     bool debug_timed;        /* the debug_level message set a timeout */
     uint32_t debug_until_ms;
+    bool ready; /* anv_node_init succeeded */
     bool begun;
 
     /* OTA and the log transfer share this one ISO-TP channel on the `transfer` port; at most
@@ -196,7 +197,8 @@ void anv_node_config_default(anv_node_config_t *cfg);
  * False if the type, link or outputs_off is missing, node_id isn't 1..254, or the type doesn't
  * fit the tables. */
 bool anv_node_init(anv_node_t *node, const anv_node_config_t *cfg);
-/* Set the link filters, turn outputs off, call setup. Call once the link is started. */
+/* Set the link filters, turn outputs off, call setup. Call once the link is started.
+ * After a failed anv_node_init, begin and poll do nothing: the node stays off the bus. */
 void anv_node_begin(anv_node_t *node, uint32_t now_ms);
 /* Call every loop: polls the link (bus-off recovery), handles received frames, timers, streams
  * and the heartbeat, then calls the loop hook. */

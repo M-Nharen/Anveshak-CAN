@@ -80,8 +80,9 @@ echoed back to the sender with the same `seq`.
 
 ## Node IDs: the DIP switches
 
-Node ID = `BENCH_DIP_ID_BASE` (16) + the switch value, read once at boot. With four switches that's
-IDs 16–31; change a switch, then press reset. Each switch goes between its pin and GND (internal
+The switches **are** the node ID, read once at boot: with four switches, IDs 1–15. All off (0)
+isn't a valid ID: the board then stays off the bus, blinks fast and says so on the serial console.
+Change a switch, then press reset. Each switch goes between its pin and GND (internal
 pull-ups; closed = 1, `pins[0]` is bit 0):
 
 | Board | DIP pins (bit 0 first) |
@@ -89,8 +90,9 @@ pull-ups; closed = 1, `pins[0]` is bit 0):
 | ESP32-S3 | GPIO 4, 5, 6, 7 |
 | WROOM | GPIO 13, 14, 25, 26 |
 
-Change them, the count or the base in `board_pins.h`. Keep IDs clear of the hosts' (1 = Orin,
-2 = RPi, 250 = the command-line tools).
+Change the pins, the count or `BENCH_DIP_ID_BASE` (an offset added to the switch value, 0 now) in
+`board_pins.h`. Hosts sit at the top, out of the way: 250 = the command-line tools, 251 = Orin,
+252 = RPi.
 
 Two boards on the same setting: each hears the other's frames carrying its own ID, raises
 `id_conflict` (visible in `anv-host events`), goes to FAULT and stops sending. The LED blinks fast

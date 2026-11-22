@@ -14,7 +14,7 @@ same as anv_schema's Python codec, and the bytes match the ESP32's generated C e
 Host (anv_host) is a brain on the bus: discovery, ID assignment, leader election and the
 clients for settings, stream rates, commands, actions, arm/disarm and E-stop:
 
-    host = anv_can.Host(link, s, host_id=1)
+    host = anv_can.Host(link, s, host_id=252)  # 251 = Orin, 252 = RPi
     host.set_callbacks(node_appeared=lambda n, returned: print(n))
     host.start()
     host.wait_for_node(20, 2000)

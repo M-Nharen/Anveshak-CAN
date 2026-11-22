@@ -174,6 +174,9 @@ static void raise(anv_node_t *n, uint16_t code, uint16_t detail, bool cleared)
 
 void anv_node_event(anv_node_t *n, uint16_t code, uint16_t detail)
 {
+    if (!n->ready) {
+        return; /* anv_node_init failed: do nothing */
+    }
     if (rate_limited(n, code)) {
         return;
     }
@@ -182,6 +185,9 @@ void anv_node_event(anv_node_t *n, uint16_t code, uint16_t detail)
 
 void anv_node_event_clear(anv_node_t *n, uint16_t code, uint16_t detail)
 {
+    if (!n->ready) {
+        return; /* anv_node_init failed: do nothing */
+    }
     raise(n, code, detail, true);
 }
 
