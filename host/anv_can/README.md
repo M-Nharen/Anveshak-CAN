@@ -77,9 +77,13 @@ looked up in the schema by `type_id`.
   MAC. A node whose heartbeat hash doesn't match our schema's type is listed as
   `schema_mismatch` and nothing is decoded from or asked of it. Offline after
   `node_timeout_ms` (or 3.5 heartbeat periods, if longer).
-- **IDs.** Node IDs are the boards' own (DIP switches); a host never hands IDs out. A host's own
-  ID is `host_id` in its config. Hosts sit at the top of the range, out of the nodes' way: 250 = the
-  CLI tools, 251 = Orin, 252 = RPi (by convention). Nodes use 1–249.
+- **IDs.** Boards with `id_source = dip` use their switches (1-15). Boards with `id_source = auto`
+  ask with `id_request`; the host configured with `allocator = Always` answers (on the rover: the
+  Pi's ID service, `anv-host ids can1 --serve`, host 254), from `auto_first..auto_last` (16-249),
+  remembering each MAC in `id_table_path` (re-read before every answer). Other hosts default to
+  `allocator = Off`. `assign_id(mac, id, move=True)` moves an auto-ID board; `pin_id` records it.
+  A host's own ID is `host_id` in its config: 250 = the CLI tools, 251 = Orin, 252 = RPi,
+  254 = the ID service (by convention).
 - **Leadership.** docs/architecture.md "Hosts: choosing which one leads", for any hosts with
   any IDs: start standby, claim only when a `lead_request` names you (`request_lead()`) or with
   `auto_takeover`, higher term wins, then lower `tie_break`, then lower ID. `observer` hosts

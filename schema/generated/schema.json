@@ -26,7 +26,9 @@
   "broadcast": 0,
   "unassigned": 255,
   "first": 1,
-  "last": 254
+  "last": 254,
+  "auto_first": 16,
+  "auto_last": 249
  },
  "protocol_last_port": 63,
  "protocol": {
@@ -34,10 +36,11 @@
   "type_id": 0,
   "version": 1,
   "description": "Messages, parameters and events common to every node and host.",
-  "wire_hash": 2221918958,
+  "wire_hash": 3505036413,
   "enums": {
    "node_state": {
     "boot": 0,
+    "unassigned": 1,
     "idle": 2,
     "armed": 3,
     "fault": 4,
@@ -55,7 +58,12 @@
     "disarm": 2,
     "reset": 3,
     "fault_reset": 4,
-    "identify": 5
+    "identify": 5,
+    "forget_id": 6
+   },
+   "id_source": {
+    "auto": 0,
+    "dip": 1
    },
    "severity": {
     "info": 0,
@@ -263,7 +271,8 @@
         "disarm": 2,
         "reset": 3,
         "fault_reset": 4,
-        "identify": 5
+        "identify": 5,
+        "forget_id": 6
        }
       },
       "const": null,
@@ -523,6 +532,7 @@
        "name": "node_state",
        "values": {
         "boot": 0,
+        "unassigned": 1,
         "idle": 2,
         "armed": 3,
         "fault": 4,
@@ -666,6 +676,104 @@
       "enum": null,
       "const": null,
       "description": ""
+     }
+    ]
+   },
+   {
+    "name": "id_request",
+    "port": 8,
+    "priority": 4,
+    "sender": "node",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "A board with no ID asks for one, from src 255. Repeated with jitter until answered.",
+    "fields": [
+     {
+      "name": "mac",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 6,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "type_id",
+      "type": "u16",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     }
+    ]
+   },
+   {
+    "name": "id_assign",
+    "port": 9,
+    "priority": 4,
+    "sender": "host",
+    "kind": "event",
+    "length": 8,
+    "watchdog_ms": 0,
+    "apply": "now",
+    "rate": null,
+    "description": "The allocator's answer, sent to dst 255. The board checks the MAC and keeps the ID. Also how a host moves an auto-ID board to another ID (only while disarmed; DIP and fixed IDs ignore it).",
+    "fields": [
+     {
+      "name": "mac",
+      "type": "u8",
+      "start_bit": 0,
+      "count": 6,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "node_id",
+      "type": "u8",
+      "start_bit": 48,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": ""
+     },
+     {
+      "name": "flags",
+      "type": "u8",
+      "start_bit": 56,
+      "count": 1,
+      "scale": 1.0,
+      "offset": 0.0,
+      "unit": "",
+      "min": null,
+      "max": null,
+      "enum": null,
+      "const": null,
+      "description": "bit 0 = move: take this ID even if the board has one"
      }
     ]
    },
@@ -1108,6 +1216,28 @@
     "group": "",
     "enum": null,
     "description": "Most events of one code a node sends per second"
+   },
+   {
+    "index": 61446,
+    "name": "id_source",
+    "type": "u8",
+    "default": 0.0,
+    "min": null,
+    "max": null,
+    "unit": "",
+    "access": "rw",
+    "persist": true,
+    "disarmed_only": true,
+    "reboot_required": true,
+    "group": "",
+    "enum": {
+     "name": "id_source",
+     "values": {
+      "auto": 0,
+      "dip": 1
+     }
+    },
+    "description": "Where the node ID comes from: auto (from the hosts) or dip (switches). After a reset"
    }
   ],
   "actions": [],
@@ -1242,7 +1372,14 @@
     "code": 1543,
     "name": "id_conflict",
     "severity": "critical",
-    "description": "Another board is sending with this node's ID (same DIP setting); this node goes quiet",
+    "description": "Another board is sending with this node's ID. A DIP or fixed ID goes quiet; an auto ID asks for a new one",
+    "cause": ""
+   },
+   {
+    "code": 1544,
+    "name": "dip_id_invalid",
+    "severity": "warning",
+    "description": "id_source is dip but the switches read 0 (or over 254); asked the hosts instead (detail = reading)",
     "cause": ""
    },
    {
@@ -1379,6 +1516,13 @@
     "cause": ""
    },
    {
+    "code": 32780,
+    "name": "node_id_assigned",
+    "severity": "info",
+    "description": "A board got a node ID (detail = ID)",
+    "cause": ""
+   },
+   {
     "code": 32781,
     "name": "unknown_type",
     "severity": "warning",
@@ -1484,6 +1628,18 @@
      "description": "Blink the LED for this many seconds"
     }
    ],
+   "events": []
+  },
+  {
+   "name": "blank",
+   "type_id": 99,
+   "version": 1,
+   "description": "Nothing but the built-ins (heartbeat, settings, arm/disarm, E-stop, info pages, CAN firmware updates). For bringing up and testing a board; firmware/nodes/blank_node.",
+   "wire_hash": 110289406,
+   "enums": {},
+   "messages": [],
+   "params": [],
+   "actions": [],
    "events": []
   },
   {

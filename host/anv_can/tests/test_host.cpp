@@ -25,6 +25,7 @@ std::shared_ptr<const Schema> host_schema() {
 HostConfig config(uint8_t id) {
   HostConfig c;
   c.host_id = id;
+  c.allocator = HostConfig::Allocator::Off;
   c.node_timeout_ms = 300;
   c.service_timeout_ms = 200;
   return c;
@@ -98,6 +99,80 @@ TEST(discovers_nodes_and_checks_schema) {
   CHECK(!h.node(20)->online && h.node(21)->online);
   CHECK(h.get(20, "heartbeat_hz").status == Status::NoSuchNode);
   h.stop();
+}
+
+TEST(assigns_ids_and_remembers_them) {
+  const std::string table = "/tmp/anv_host_test_assign_" + std::to_string(getpid()) + ".txt";
+  std::remove(table.c_str());
+  TestBus bus;
+  auto link = bus.connect();
+  HostConfig cfg = config(1);
+  cfg.allocator = HostConfig::Allocator::Auto;  // nobody else is around, so this host answers
+  cfg.id_first = 30;
+  cfg.id_last = 40;
+  cfg.id_table_path = table;
+  std::atomic<int> assigned{0};
+  {
+    Host h(*link, host_schema(), cfg);
+    HostCallbacks cb;
+    cb.id_assigned = [&](uint8_t, uint64_t, uint16_t) { ++assigned; };
+    h.set_callbacks(cb);
+    CHECK(h.start());
+    t::FakeNode a(bus, type("esp32_bench"), 0, 0xA4CF12000001ull), b(bus, type("esp32_bench"), 0, 0xA4CF12000002ull);
+    a.start();
+    CHECK(eventually([&] { return a.id_ != 0; }));
+    b.start();
+    CHECK(eventually([&] { return b.id_ != 0; }));
+    CHECK(a.id_ == 30 && b.id_ == 31);
+    CHECK(h.wait_for_node(30, 1000) && h.node(30)->mac == 0xA4CF12000001ull);
+    CHECK(assigned >= 2);
+    h.stop();
+  }
+  // Restart: the same board gets the same ID back, even asking first.
+  Host h2(*link, host_schema(), cfg);
+  CHECK(h2.start());
+  CHECK(h2.id_table().size() == 2);
+  t::FakeNode b(bus, type("esp32_bench"), 0, 0xA4CF12000002ull);
+  b.start();
+  CHECK(eventually([&] { return b.id_ != 0; }) && b.id_ == 31);
+  h2.stop();
+  std::remove(table.c_str());
+}
+
+TEST(allocator_off_and_observer_never_answer) {
+  TestBus bus;
+  auto l1 = bus.connect(), l2 = bus.connect();
+  Host off(*l1, host_schema(), config(1));
+  HostConfig oc = config(2);
+  oc.observer = true;
+  Host obs(*l2, host_schema(), oc);
+  CHECK(off.start() && obs.start());
+  t::FakeNode a(bus, type("esp32_bench"), 0, 0x42);
+  a.start();
+  std::this_thread::sleep_for(200ms);
+  CHECK(a.id_ == 0);
+}
+
+TEST(only_the_lowest_host_allocates_without_a_leader) {
+  TestBus bus;
+  auto l1 = bus.connect(), l2 = bus.connect();
+  HostConfig c1 = config(5), c2 = config(3);
+  c1.allocator = c2.allocator = HostConfig::Allocator::Auto;
+  c1.id_first = c1.id_last = 50;  // different tables: whichever answers is visible in the ID
+  c2.id_first = c2.id_last = 60;
+  Host h5(*l1, host_schema(), c1), h3(*l2, host_schema(), c2);
+  CHECK(h5.start() && h3.start());
+  CHECK(eventually([&] { return h5.hosts().size() == 1 && h3.hosts().size() == 1; }));
+  t::FakeNode a(bus, type("esp32_bench"), 0, 0x77);
+  a.start();
+  CHECK(eventually([&] { return a.id_ != 0; }) && a.id_ == 60);
+  // Once host 5 leads, it is the one that answers.
+  a.stop();
+  CHECK(h5.request_lead() == Status::Ok && h5.leading());
+  CHECK(eventually([&] { return h3.leader() == 5; }));
+  t::FakeNode b(bus, type("esp32_bench"), 0, 0x78);
+  b.start();
+  CHECK(eventually([&] { return b.id_ != 0; }) && b.id_ == 50);
 }
 
 TEST(settings) {

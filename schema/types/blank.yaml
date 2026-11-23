@@ -1,0 +1,6 @@
+name: blank
+type_id: 99
+version: 1
+description: >-
+  Nothing but the built-ins (heartbeat, settings, arm/disarm, E-stop, info pages, CAN firmware
+  updates). For bringing up and testing a board; firmware/nodes/blank_node.

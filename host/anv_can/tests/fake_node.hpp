@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "anv/codec.hpp"
+#include "anv/host/allocator.hpp"
 #include "anv/host/host.hpp"
 #include "anv/test_bus.hpp"
 
@@ -19,9 +20,9 @@ namespace t {
 
 class FakeNode {
  public:
-  // id: the board's own ID, as its DIP switches would set it.
-  FakeNode(anv::TestBus& bus, const anv::NodeType& type, uint8_t id)
-      : id_(id), s_(schema()), type_(type), link_(bus.connect()) {
+  // id 0: no ID yet, ask the allocator (from the unassigned ID) with this MAC.
+  FakeNode(anv::TestBus& bus, const anv::NodeType& type, uint8_t id, uint64_t mac = 0)
+      : id_(id), s_(schema()), type_(type), link_(bus.connect()), mac_(mac) {
     for (const anv::Param* p : all_params()) {
       uint32_t w = 0;
       anv::host::value_to_wire(p->type, p->def.value_or(0), w, nullptr);
@@ -43,7 +44,7 @@ class FakeNode {
   }
 
   // What the tests look at.
-  const uint8_t id_;
+  std::atomic<uint8_t> id_;
   std::atomic<bool> armed{false}, estop{false}, bad_hash{false};
   std::atomic<int> commands{0}, actions{0}, saves{0}, telemetry_sent{0};
   std::atomic<uint32_t> last_action_arg{0};
@@ -80,7 +81,7 @@ class FakeNode {
     }
     return -1;
   }
-  uint8_t src() const { return id_; }
+  uint8_t src() const { return id_ ? id_.load() : static_cast<uint8_t>(s_.node_ids.unassigned); }
 
   void send(const anv::Message& m, const anv::Values& v, uint32_t dst, bool raw = false) {
     anv::Frame f;
@@ -106,8 +107,17 @@ class FakeNode {
       if (link_->recv(f, 1) == anv::RecvStatus::Ok) handle(f, last_cmd);
       const auto now = Clock::now();
       if (now >= next_hb) {
-        next_hb = now + std::chrono::milliseconds(50);
-        {
+        next_hb = now + std::chrono::milliseconds(id_ ? 50 : 30);
+        if (id_ == 0) {
+          anv::Values v;
+          uint8_t mac[6];
+          anv::host::IdAllocator::mac_to_bytes(mac_, mac);
+          anv::FieldValue fv;
+          for (uint8_t b : mac) fv.push_back(n(b));
+          v["mac"] = fv;
+          v["type_id"] = anv::one(n(type_.type_id));
+          send(*p.message("id_request"), v, s_.node_ids.broadcast, true);
+        } else {
           anv::Values v;
           v["state"] = anv::one(std::string(estop ? "estop" : armed ? "armed" : "idle"));
           v["type_id"] = anv::one(n(type_.type_id));
@@ -125,6 +135,7 @@ class FakeNode {
           }
         }
       }
+      if (id_ == 0) continue;
       for (const anv::Message& m : type_.messages) {
         if (m.kind != "stream") continue;
         const uint32_t mhz = rate_mhz(m.port);
@@ -149,7 +160,7 @@ class FakeNode {
     o.raw = true;
     o.labels = false;
     if (!anv::decode(*m, f.data.data(), f.len, v, &err, o)) return;
-    const bool to_me = idp.dst == s_.node_ids.broadcast || idp.dst == id_;
+    const bool to_me = idp.dst == s_.node_ids.broadcast || (id_ != 0 && idp.dst == id_);
 
     if (m->name == "host_heartbeat") {
       if (get(v, "role") != label("host_role", "leader")) return;
@@ -172,7 +183,11 @@ class FakeNode {
     } else if (m->name == "debug_level" && to_me && idp.src == leader) {
       debug_level = static_cast<uint8_t>(get(v, "level"));
       ++debug_sets;
-    } else if (m->name == "service" && idp.dst == id_) {
+    } else if (m->name == "id_assign" && id_ == 0 && idp.dst == s_.node_ids.unassigned) {
+      uint8_t mac[6];
+      for (size_t i = 0; i < 6; ++i) mac[i] = static_cast<uint8_t>(get(v, "mac", i));
+      if (anv::host::IdAllocator::mac_from_bytes(mac) == mac_) id_ = static_cast<uint8_t>(get(v, "node_id"));
+    } else if (m->name == "service" && id_ != 0 && idp.dst == id_) {
       service(static_cast<uint8_t>(idp.src), v);
     } else if (m->kind == "command" && idp.dst == id_ && idp.src == leader) {
       ++commands;
@@ -217,6 +232,7 @@ class FakeNode {
   const anv::Schema& s_;
   const anv::NodeType& type_;
   std::unique_ptr<anv::Link> link_;
+  uint64_t mac_;
   uint16_t term_ = 0;
   std::mutex mu_;
   std::map<uint16_t, uint32_t> params_;

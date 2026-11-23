@@ -1,8 +1,8 @@
 # RPi bench: CAN gateway, node discovery and the 7" touch screen
 
 > **Out of date on this branch.** The services this page installs (`anv-gateway`, the dashboard)
-> are the old 11-bit system and don't talk to the v2 bench sketch. Node IDs now come from each
-> board's DIP switches, not from the RPi. Until the v2 bench gateway lands, use the v2 tools on
+> are the old 11-bit system and don't talk to the v2 bench sketch. Node IDs now come from the v2 ID
+> service (`anv-host ids can1 --serve`, set up by `host/tools/pi/setup.sh`) or a board's DIP switches. Until the v2 bench gateway lands, use the v2 tools on
 > the Pi directly: run `host/tools/pi/setup.sh` once (see `host/tools/pi/README.md`), then
 > `anv-host list can1`, `anv-can dump can1`, and `anv-build <sketch> <node> --can can1` to build and
 > flash a node. The wiring (section 1) and CAN HAT overlays still apply.

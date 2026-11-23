@@ -46,6 +46,7 @@ struct NodeInfo {
   uint32_t reboots = 0;            // times the uptime went backwards
   int64_t first_seen_ns = 0, last_seen_ns = 0;
   double heartbeat_hz = 0;         // measured
+  uint64_t mac = 0;                // from the ID allocator, 0 if not known
 
   // Decoding the node's own messages is only safe when the schemas agree.
   const NodeType* usable_type() const { return compat == Compat::Ok ? type : nullptr; }
@@ -75,6 +76,7 @@ class NodeRegistry {
 
   void on_heartbeat(const NodeHeartbeat& hb, int64_t now_ns, std::vector<RegistryEvent>& events);
   void tick(int64_t now_ns, std::vector<RegistryEvent>& events);
+  void set_mac(uint8_t node, uint64_t mac);
   void forget(uint8_t node);
 
   const NodeInfo* find(uint8_t node) const;
@@ -85,6 +87,7 @@ class NodeRegistry {
   const Schema& schema_;
   RegistryConfig cfg_;
   std::map<uint8_t, NodeInfo> nodes_;
+  std::map<uint8_t, uint64_t> macs_;
 };
 
 }  // namespace anv::host

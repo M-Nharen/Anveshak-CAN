@@ -36,6 +36,10 @@ The script installs and sets up:
 - Your user in the `dialout` group, for USB flashing (log out and in once).
 - `can0` and `can1` brought up at boot at 500 kbit/s, restarting by themselves after a bus-off.
   If they don't exist yet, it prints the `config.txt` lines for the CAN HAT.
+- The **node ID service** on each CAN interface (`anv-ids@can0`, `anv-ids@can1`): boards without
+  DIP switches ask it for an ID and get 16, 17, ... It remembers each board by MAC in
+  `~/.local/share/anveshak/node_ids.txt`, so a board keeps its ID. `--ids can1` runs it on can1
+  only; `--ids ""` not at all. See "Node IDs" below.
 - One test build of the bench sketch for both chips. This takes the longest, but later builds
   reuse its compiled core.
 
@@ -44,6 +48,24 @@ Run it again after a `git pull` that changes `host/`. It only redoes what's need
 **On 32-bit Raspberry Pi OS** the script stops. That OS usually runs a 64-bit kernel, so
 `arduino-cli` downloads the 64-bit ESP32 compiler, which can't start on the 32-bit system. The error
 names `ld-linux-aarch64.so.1`. The fix is the 64-bit OS.
+
+## Node IDs
+
+| Board | What to do | ID |
+| --- | --- | --- |
+| No DIP switches | Nothing: flash it, it asks the ID service | 16, 17, ... (kept per board) |
+| With DIP switches | Once: `anv-host set can1 <its ID now> id_source=dip --save`, then reset it | its switches, 1–15 |
+
+```sh
+anv-host ids can1              # which board (MAC) has which ID, and who's on the bus
+anv-host set-id can1 17 3      # give the auto-ID board at 17 the ID 3 instead (while disarmed)
+anv-host set can1 3 id_source=auto --save   # a DIP board back to auto (after a reset)
+systemctl status anv-ids@can1  # the ID service itself; journalctl -u anv-ids@can1 for its log
+```
+
+A DIP board whose switches read 0 asks the ID service instead, so it still gets an ID. A board
+with no ID yet blinks blue (S3) and shows as nothing in `anv-host list`; if it stays that way,
+check that `anv-ids@can1` is running.
 
 ## 2. Build and flash
 
@@ -93,7 +115,7 @@ the same name). Start from `firmware/nodes/bench_esp32_arduino` or the guide's e
 | `no generated code for type(s) ...` | The YAML isn't in `schema/types/`, or `anv-schema check` shows an error in it |
 | `no access to the USB port` | `sudo usermod -aG dialout $USER`, then log out and in |
 | USB upload hangs at `Connecting...` | Hold BOOT on the board while it connects; try the other USB port on an S3 |
-| `node N: not heard on can1` | Wrong ID (check the DIP switches), board not on the bus, or `can1` down: `ip -details link show can1` |
+| `node N: not heard on can1` | Wrong ID (`anv-host ids can1`; check the DIP switches on a `dip` board), board not on the bus, or `can1` down: `ip -details link show can1` |
 | `node N: armed, skipping` | Disarm it first: `anv-host disarm can1 N --take-lead` |
 | `wrong type or chip` | The sketch is for another node type than the board runs. To change a board's type, flash it over USB once |
 | Out of memory while compiling (Pi with 1 GB) | Add swap: `sudo dphys-swapfile swapoff; sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile; sudo dphys-swapfile setup; sudo dphys-swapfile swapon` |

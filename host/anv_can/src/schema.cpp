@@ -380,6 +380,8 @@ std::shared_ptr<Schema> Schema::load_json(const std::string& text, std::string* 
       !r.uint(root, "protocol_last_port", s->protocol_last_port, "schema.json")) {
     return done(false);
   }
+  if (auto v = r.opt_num(*ids, "auto_first")) s->node_ids.auto_first = static_cast<uint32_t>(*v);
+  if (auto v = r.opt_num(*ids, "auto_last")) s->node_ids.auto_last = static_cast<uint32_t>(*v);
   const Value* proto = r.get(root, "protocol", Value::Object, "schema.json");
   const Value* types = r.get(root, "types", Value::Array, "schema.json");
   if (!proto || !types || !r.node_type(*proto, s->protocol, "protocol")) return done(false);

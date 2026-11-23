@@ -38,7 +38,7 @@ target_compile_definitions(anv_proto PRIVATE ANV_SCHEMA_JSON_DEFAULT="${ANV_SCHE
 
 # anv_host: node discovery, ID assignment, leader election, and the clients for settings,
 # rates, commands, actions, arm/disarm and E-stop.
-add_library(anv_host STATIC src/host/election.cpp src/host/registry.cpp src/host/host.cpp)
+add_library(anv_host STATIC src/host/election.cpp src/host/registry.cpp src/host/allocator.cpp src/host/host.cpp)
 target_link_libraries(anv_host PUBLIC anv_proto)
 
 foreach(lib anv_link anv_proto anv_host)

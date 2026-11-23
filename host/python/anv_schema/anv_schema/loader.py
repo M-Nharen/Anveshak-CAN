@@ -173,7 +173,9 @@ def _parse_node_ids(raw: dict[str, Any], where: str) -> NodeIds:
     try:
         return NodeIds(broadcast=int(raw.get("broadcast", 0)),
                        unassigned=int(raw.get("unassigned", 255)),
-                       first=int(raw.get("first", 1)), last=int(raw.get("last", 254)))
+                       first=int(raw.get("first", 1)), last=int(raw.get("last", 254)),
+                       auto_first=int(raw.get("auto_first", 16)),
+                       auto_last=int(raw.get("auto_last", 249)))
     except (TypeError, ValueError) as e:
         raise SchemaError(where, f"node_ids: {e}") from e
 

@@ -115,3 +115,39 @@ def test_vcan_cli(schema):
         assert eventually(lambda: n.estop)
     finally:
         n.stop()
+
+
+def test_id_service_and_set_id(schema, tmp_path, monkeypatch):
+    """The Pi's ID service hands boards without switches IDs from 16 up, keeps them in its table,
+    and `set-id` moves one; a DIP/fixed ID can't be moved."""
+    table = tmp_path / "node_ids.txt"
+    monkeypatch.setenv("ANV_ID_TABLE", str(table))
+    bus = anv_can.TestBus()
+    serve = threading.Thread(target=run, args=(bus, "ids", "x", "--serve"),
+                             daemon=True)
+    serve.start()
+    a = FakeNode(bus, schema, "esp32_bench", 0, mac=0xA4CF12000001)
+    b = FakeNode(bus, schema, "esp32_bench", 0, mac=0xA4CF12000002)
+    dip = FakeNode(bus, schema, "esp32_bench", 3, mac=0xA4CF12000003)
+    lo = schema.node_ids["auto_first"]
+    assert lo == 16
+    assert eventually(lambda: {a.id, b.id} == {lo, lo + 1}, 3.0)
+    assert eventually(lambda: "a4cf12000001" in table.read_text() if table.exists() else False)
+
+    code, out = run(bus, "ids", "x")
+    assert code == 0 and "a4:cf:12:00:00:01" in out and "esp32_bench" in out and "yes" in out
+
+    code, out = run(bus, "set-id", "x", str(a.id), "5")
+    assert code == 0, out
+    assert a.id == 5 and "now node 5" in out
+    assert "a4cf12000001 5 " in table.read_text()
+    code, out = run(bus, "set-id", "x", "3", "7")  # the DIP board
+    assert code == 1 and "can't be moved" in out and dip.id == 3
+    code, out = run(bus, "set-id", "x", "5", "3")  # taken
+    assert code == 1 and "already in use" in out
+
+    # A board that lost its ID (forget_id, fresh flash) gets the one in the table back.
+    a.id = 0
+    assert eventually(lambda: a.id == 5, 3.0)
+    for n in (a, b, dip):
+        n.stop()

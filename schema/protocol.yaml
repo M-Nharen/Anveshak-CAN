@@ -22,10 +22,11 @@ id_layout:
 
 node_ids:
   broadcast: 0         # dst = 0: everyone
-  unassigned: 255      # reserved: never a node ID (an unset or invalid ID)
+  unassigned: 255      # a board with no ID yet sends from 255 and is answered at 255
   first: 1
-  last: 254            # hosts and nodes share this range. Node IDs come from each board's DIP
-                       # switches; hosts' IDs from their config. Nothing assigns IDs at run time.
+  last: 254            # hosts and nodes share this range
+  auto_first: 16       # IDs the hosts hand out to boards that ask (id_source = auto) ...
+  auto_last: 249       # ... so 1..15 stay free for DIP switches and 250..254 for hosts
 
 ports:
   protocol_last: 63    # ports 0..63 are this file's; 64..max are per node type
@@ -33,6 +34,7 @@ ports:
 enums:
   node_state:
     boot: 0            # starting up, outputs off
+    unassigned: 1      # no node ID yet
     idle: 2            # running, disarmed: outputs off
     armed: 3           # outputs live, following commands
     fault: 4           # latched fault: outputs off until FAULT_RESET
@@ -49,6 +51,10 @@ enums:
     reset: 3
     fault_reset: 4
     identify: 5        # blink the node's LED for a few seconds
+    forget_id: 6       # erase the saved node ID and ask again (only while idle)
+  id_source:           # where a board takes its node ID from (the id_source setting)
+    auto: 0            # ask the hosts; the answer is saved, so it is kept across reboots
+    dip: 1             # the board's DIP switches (falls back to auto if they read 0)
   severity:
     info: 0
     warning: 1
@@ -192,6 +198,29 @@ messages:
       - {name: schema_hash, type: u16, description: "low 16 bits of the type's wire hash"}
       - {name: uptime_s, type: u16, unit: s}
 
+  - name: id_request
+    port: 8
+    priority: 4
+    sender: node
+    kind: event
+    description: A board with no ID asks for one, from src 255. Repeated with jitter until answered.
+    fields:
+      - {name: mac, type: u8, count: 6}
+      - {name: type_id, type: u16}
+
+  - name: id_assign
+    port: 9
+    priority: 4
+    sender: host
+    kind: event
+    description: >-
+      The allocator's answer, sent to dst 255. The board checks the MAC and keeps the ID. Also how a
+      host moves an auto-ID board to another ID (only while disarmed; DIP and fixed IDs ignore it).
+    fields:
+      - {name: mac, type: u8, count: 6}
+      - {name: node_id, type: u8}
+      - {name: flags, type: u8, description: "bit 0 = move: take this ID even if the board has one"}
+
   - name: service
     port: 10
     priority: 4
@@ -265,6 +294,9 @@ params:
      description: "0 off, 1 status, 2 activity, 3 owned by the application"}
   - {index: 0xF005, name: event_rate_limit, type: u8, min: 1, max: 50, default: 1, unit: Hz,
      description: "Most events of one code a node sends per second"}
+  - {index: 0xF006, name: id_source, type: u8, enum: id_source, default: 0, disarmed_only: true,
+     reboot_required: true,
+     description: "Where the node ID comes from: auto (from the hosts) or dip (switches). After a reset"}
 
 events:
   # 0x00xx-0x3Fxx: protocol and node-generic. 0x40xx-0x7Fxx: per node type.
@@ -292,7 +324,8 @@ events:
   - {code: 0x0604, name: params_corrupt, severity: error, description: "Saved parameters failed their check; defaults loaded"}
   - {code: 0x0605, name: storage_write_fail, severity: error, description: "Saving parameters or logs failed"}
   - {code: 0x0606, name: self_test_fail, severity: error, description: "Power-on self-test failed (detail = which test)"}
-  - {code: 0x0607, name: id_conflict, severity: critical, description: "Another board is sending with this node's ID (same DIP setting); this node goes quiet"}
+  - {code: 0x0607, name: id_conflict, severity: critical, description: "Another board is sending with this node's ID. A DIP or fixed ID goes quiet; an auto ID asks for a new one"}
+  - {code: 0x0608, name: dip_id_invalid, severity: warning, description: "id_source is dip but the switches read 0 (or over 254); asked the hosts instead (detail = reading)"}
   - {code: 0x0701, name: update_started, severity: info, description: "Receiving a firmware image"}
   - {code: 0x0702, name: update_wrong_type, severity: error, description: "Image for another chip or node type refused"}
   - {code: 0x0703, name: update_rollback, severity: error, description: "New image failed to confirm itself; old image restored"}
@@ -312,4 +345,5 @@ events:
   - {code: 0x8009, name: bus_error_burst, severity: warning, description: "Many bus error frames in a second (detail = type)"}
   - {code: 0x800A, name: no_leader, severity: info, description: "Hosts are up but no leader is chosen"}
   - {code: 0x800B, name: lead_changed, severity: info, description: "A host took the lead (detail = new leader)"}
+  - {code: 0x800C, name: node_id_assigned, severity: info, description: "A board got a node ID (detail = ID)"}
   - {code: 0x800D, name: unknown_type, severity: warning, description: "A node reports a type no schema file describes"}

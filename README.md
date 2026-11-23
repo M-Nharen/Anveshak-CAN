@@ -1,9 +1,9 @@
 # Anveshak rover CAN system
 
 One CAN bus connects the rover's host computers (Jetson Orin, Raspberry Pi) to its nodes. **Every
-node is an ESP32** (WROOM or S3). Each node's ID is set by DIP switches on the board; nodes report
-their health, and are
-reflashed over CAN.
+node is an ESP32** (WROOM or S3). A node gets its ID from the Pi's ID service (kept per board,
+16 and up), or from DIP switches on a board set to `id_source = dip` (1-15); nodes report their
+health, and are reflashed over CAN.
 
 Spec: `docs/architecture.md`. Rules for Claude sessions: `CLAUDE.md`.
 
@@ -58,7 +58,7 @@ FIRMWARE (ESP32, C)                       HOST (C++ and Python)
 On the RPi bench with at least two ESP32s running the new node library (`firmware/lib`, not the
 old `defs/`-based apps):
 
-- [ ] Both nodes appear with their DIP-switch IDs in `anv-host list` / `anv-flash list`; two boards on the same setting both report `id_conflict`
+- [ ] Both nodes appear in `anv-host list` / `anv-flash list`: a board without switches with an ID from the Pi (`anv-host ids`), one with switches (`id_source=dip`) at its switch value; two boards on the same switch setting both report `id_conflict`
 - [ ] Each node reports its type and the host matches it to the schema (version check passes)
 - [ ] Read and change a setting live (`anv-host get` / `set`); it survives a node reboot
 - [ ] Change a stream rate live (`anv-host rate`) and see telemetry rate change

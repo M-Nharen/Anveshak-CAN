@@ -16,11 +16,17 @@
     anv-host debug vcan0 20 2 --take-lead         # debug level 2 on node 20
     anv-host debug vcan0 all 0 --take-lead        # back to off, every node
     anv-host events vcan0                        # watch error events as they happen
+    anv-host ids vcan0                           # the ID table: which board (MAC) has which ID
+    anv-host ids vcan0 --serve                   # be the ID service (host 254; the Pi runs it)
+    anv-host set-id vcan0 17 5                   # move the board at 17 to ID 5 (auto-ID boards)
 
 The tool joins the bus as a host with ID --host-id (default $ANV_HOST_ID, else 250). Arming,
 commands and E-stop release need the lead; --take-lead asks for it, which (like any change of
 leader) disarms every node first. When the tool exits its heartbeat stops, so nodes it armed
 disarm on their own (leader timeout); it also disarms them on the way out.
+
+Boards set to id_source=auto get their ID from the ID service, from the table in --id-table
+(default $ANV_ID_TABLE, else ~/.local/share/anveshak/node_ids.txt).
 """
 from __future__ import annotations
 
@@ -46,17 +52,21 @@ def _open(open_link: Callable[[str], Link] | None, name: str) -> Link:
     return open_socketcan(name)
 
 
+def _mac(mac: int) -> str:
+    return ":".join(f"{(mac >> s) & 0xFF:02x}" for s in range(40, -8, -8)) if mac else "-"
+
+
 def cmd_list(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
     time.sleep(a.wait)
     nodes = sorted(host.nodes(), key=lambda n: n.id)
-    print(f"{'ID':>3}  {'TYPE':<20} {'STATE':<10} {'SCHEMA':<16} {'HB Hz':>6} {'UPTIME':>7}",
+    print(f"{'ID':>3}  {'TYPE':<20} {'STATE':<10} {'SCHEMA':<16} {'HB Hz':>6} {'UPTIME':>7}  MAC",
           file=out)
     for n in nodes:
         tname = n.type.name if n.type is not None else f"type {n.type_id}"
         state = enum_label(schema, "node_state", n.state) if n.online else "offline"
         flags = (" fault" if n.fault_active else "") + (" unsaved" if n.unsaved_params else "")
         print(f"{n.id:>3}  {tname:<20} {state:<10} {n.compat:<16} {n.heartbeat_hz:>6.1f} "
-              f"{n.uptime_s:>6}s{flags}", file=out)
+              f"{n.uptime_s:>6}s  {_mac(n.mac)}{flags}", file=out)
     for h in sorted(host.hosts(), key=lambda h: h.id):
         if h.online:
             print(f"{h.id:>3}  {'(host)':<20} {h.role:<10} term {h.term}", file=out)
@@ -259,6 +269,60 @@ def cmd_lead(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> 
     return 0
 
 
+def default_id_table() -> str:
+    default = os.path.expanduser("~/.local/share/anveshak/node_ids.txt")
+    return os.environ.get("ANV_ID_TABLE") or default
+
+
+def _mac_of(host: Host, node: int) -> int:
+    """A node's MAC from its info pages (mac_high = bytes 0..1, mac_low = bytes 2..5)."""
+    return (int(host.info(node, "mac_high")) << 32) | int(host.info(node, "mac_low"))
+
+
+def cmd_ids(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
+    if a.serve:
+        lo, hi = schema.node_ids["auto_first"], schema.node_ids["auto_last"]
+        print(f"ID service on {a.interface}: IDs {lo}-{hi}, table {a.id_table}. Ctrl-C to stop.",
+              file=out, flush=True)
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            return 0
+    time.sleep(a.wait)
+    online = {n.id: n for n in host.nodes() if n.online}
+    table = sorted(host.id_table(), key=lambda t: t[1])
+    print(f"{'ID':>3}  {'MAC':<17}  {'TYPE':<20} ON BUS", file=out)
+    for mac, node, type_id in table:
+        t = next((x.name for x in schema.types if x.type_id == type_id), f"type {type_id}")
+        print(f"{node:>3}  {_mac(mac):<17}  {t:<20} {'yes' if node in online else '-'}", file=out)
+    if not table:
+        print(f"(empty: {a.id_table})", file=out)
+    return 0
+
+
+def cmd_set_id(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
+    time.sleep(a.wait)  # hear everyone first, so "in use" is right
+    if not host.wait_for_node(a.node, 100):
+        print(f"node {a.node} is not on the bus", file=out)
+        return 1
+    taken = {n.id for n in host.nodes() if n.online} | {h.id for h in host.hosts() if h.online}
+    if a.new_id in taken:
+        print(f"ID {a.new_id} is already in use on the bus", file=out)
+        return 1
+    mac = _mac_of(host, a.node)
+    host.assign_id(mac, a.new_id, move=True)
+    moved = host.wait_for_node(a.new_id, 3000) and _mac_of(host, a.new_id) == mac
+    if not moved:
+        print(f"node {a.node} didn't move: it only takes a new ID while disarmed and with "
+              f"id_source=auto (a DIP or fixed ID can't be moved)", file=out)
+        return 1
+    info = host.node(a.new_id)
+    host.pin_id(mac, a.new_id, info.type_id)
+    print(f"{_mac(mac)} is now node {a.new_id} (saved on the board and in {a.id_table})", file=out)
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="anv-host", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -270,6 +334,9 @@ def _parser() -> argparse.ArgumentParser:
                     help="seconds to wait for nodes' heartbeats (default 2)")
     ap.add_argument("--command-hz", type=float, default=50.0,
                     help="command refresh rate (default 50)")
+    ap.add_argument("--id-table", default=default_id_table(),
+                    help="the MAC -> node ID table (default $ANV_ID_TABLE or "
+                         "~/.local/share/anveshak/node_ids.txt)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def p(name: str, fn: Callable[..., int], help: str) -> argparse.ArgumentParser:
@@ -329,6 +396,12 @@ def _parser() -> argparse.ArgumentParser:
     sp.add_argument("--take-lead", action="store_true", help="become the leader first")
     sp = p("events", cmd_events, "watch error events from every node as they happen")
     sp.add_argument("--duration", type=float, default=0, help="seconds (default: until Ctrl-C)")
+    sp = p("ids", cmd_ids, "the node ID table, or run the ID service (--serve)")
+    sp.add_argument("--serve", action="store_true",
+                    help="answer boards asking for an ID, until stopped (one per bus)")
+    sp = p("set-id", cmd_set_id, "move an auto-ID board to another ID")
+    sp.add_argument("node", type=lambda x: int(x, 0), help="its ID now")
+    sp.add_argument("new_id", type=lambda x: int(x, 0), help="the ID it should have")
     return ap
 
 
@@ -346,7 +419,13 @@ def main(argv: list[str] | None = None, open_link: Callable[[str], Link] | None 
     except ValueError as e:
         print(f"anv-host: {e}", file=sys.stderr)
         return 2
-    host = Host(link, schema, host_id=a.host_id, command_hz=a.command_hz)
+    # Only `ids --serve` hands out IDs: one ID service per bus, one table. It never leads.
+    serve = a.cmd == "ids" and a.serve
+    args = sys.argv[1:] if argv is None else argv
+    if serve and "--host-id" not in args and "ANV_HOST_ID" not in os.environ:
+        a.host_id = 254  # the ID service's own host ID, clear of the tools (250) and hosts
+    host = Host(link, schema, host_id=a.host_id, command_hz=a.command_hz,
+                allocator="always" if serve else "off", observer=serve, id_table=a.id_table)
     if a.cmd == "events":  # set_callbacks() only works before start()
         host.set_callbacks(event=lambda e: _print_event(e, out))
     try:

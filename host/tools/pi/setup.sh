@@ -8,6 +8,8 @@
 #   host/tools/pi/setup.sh --can "can1"       # only bring up can1 at boot
 #   host/tools/pi/setup.sh --no-warm          # skip the first (slow) test build
 #   host/tools/pi/setup.sh --bitrate 250000   # CAN speed (default 500000; nodes must match)
+#   host/tools/pi/setup.sh --ids "can1"       # run the node ID service only on can1
+#   host/tools/pi/setup.sh --ids ""           # no ID service on this machine
 #
 # Run it as your normal user, from anywhere inside the repository; it asks for sudo when needed.
 set -euo pipefail
@@ -20,16 +22,22 @@ VENV="$HOME/anv-venv"
 BIN="$HOME/.local/bin"
 
 can_ifaces="can0 can1"
+id_ifaces=""
+ids_set=0
 warm=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --can) can_ifaces="$2"; shift 2 ;;
     --bitrate) BITRATE="$2"; shift 2 ;;
     --no-warm) warm=0; shift ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    --ids) id_ifaces="$2"; ids_set=1; shift 2 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+
+(( ids_set )) || id_ifaces="$can_ifaces"   # default: an ID service on every CAN interface
+ID_TABLE="$HOME/.local/share/anveshak/node_ids.txt"
 
 step() { printf '\n== %s\n' "$*"; }
 die() { printf '\nsetup: %s\n' "$*" >&2; exit 1; }
@@ -178,6 +186,39 @@ They come up by themselves after the reboot.
 EOF
 fi
 
+step "Node ID service at boot: ${id_ifaces:-none}"
+# Boards without DIP switches (id_source = auto) ask for an ID; this answers, from IDs 16 and up,
+# and remembers each board by its MAC in $ID_TABLE. One per bus: no other host hands out IDs.
+sudo tee /etc/systemd/system/anv-ids@.service >/dev/null <<EOF
+[Unit]
+Description=Anveshak node ID service on %i
+Requires=anv-can@%i.service
+After=anv-can@%i.service
+
+[Service]
+User=$USER
+Environment=ANV_SCHEMA_JSON=$repo/schema/generated/schema.json
+ExecStart=$VENV/bin/anv-host --id-table $ID_TABLE ids %i --serve
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+for i in $can_ifaces; do
+  if [[ " $id_ifaces " == *" $i "* ]]; then
+    sudo systemctl enable "anv-ids@$i.service" >/dev/null 2>&1
+    if ip link show "$i" >/dev/null 2>&1 && sudo systemctl restart "anv-ids@$i.service" 2>/dev/null; then
+      echo "$i: ID service running (table $ID_TABLE)"
+    else
+      echo "$i: ID service enabled; starts once $i is up"
+    fi
+  else
+    sudo systemctl disable --now "anv-ids@$i.service" >/dev/null 2>&1 || true
+  fi
+done
+
 step "Check"
 "$BIN/anv-build" --check
 if (( warm )); then
@@ -193,5 +234,6 @@ Done. Open a new terminal (or: source ~/.profile), then:
   anv-build <sketch> --usb /dev/ttyUSB0 --chip esp32     first flash of a new board, over USB
   anv-build <sketch> <node> --can can1                   every later flash, over CAN
   anv-host list can1                                     what's on the bus
+  anv-host ids can1                                      which board (MAC) has which ID
 See host/tools/pi/README.md.
 EOF

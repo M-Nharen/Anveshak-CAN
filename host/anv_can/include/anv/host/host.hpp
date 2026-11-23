@@ -1,10 +1,10 @@
-// anv_host: a brain on the bus. Discovers nodes from their heartbeats, takes part in the leader
-// election, and is the client for everything a host does to
+// anv_host: a brain on the bus. Discovers nodes from their heartbeats, gives IDs to new
+// boards, takes part in the leader election, and is the client for everything a host does to
 // a node: settings, stream rates, commands, actions, arm/disarm, E-stop.
 //
 // Everything comes from the schema at run time. Nothing here knows how many nodes there are,
-// what types they are, or which machine this host is: its ID and tie-break come from
-// HostConfig. Node IDs are the boards' own (DIP switches); hosts never hand IDs out.
+// what types they are, or which machine this host is: its ID, tie-break and allocator range
+// come from HostConfig.
 //
 // Threading: start() runs one background thread that receives frames, keeps time and sends
 // the periodic frames (host heartbeat, SYNC and refreshed commands while leading). Client
@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "anv/codec.hpp"
+#include "anv/host/allocator.hpp"
 #include "anv/host/election.hpp"
 #include "anv/host/registry.hpp"
 #include "anv/link.hpp"
@@ -61,6 +62,14 @@ struct HostConfig {
   bool observer = false;         // never leads (tools that only watch)
   bool auto_takeover = false;    // claim the lead when the leader vanishes (off by default)
 
+  // Who answers boards asking for an ID (id_source = auto). Off (default): never. Auto: while
+  // leading, or while nobody leads and this is the lowest-numbered host that could lead.
+  // Always: every request; for the one ID service on the bus (anv-host ids --serve on the Pi).
+  enum class Allocator { Off, Auto, Always } allocator = Allocator::Off;
+  uint8_t id_first = 0, id_last = 0;  // range to give out; 0 = the schema's auto_first..auto_last
+  std::string id_table_path;          // where MAC -> ID pairs are kept; empty = memory only.
+                                      // Re-read before every answer, so tools can edit it.
+
   double heartbeat_hz = 20;      // host_heartbeat rate
   double sync_hz = 50;           // SYNC rate while leading; 0 = don't send SYNC
   double command_hz = 50;        // default refresh rate for set_command()
@@ -96,6 +105,7 @@ struct HostCallbacks {
   std::function<void(uint8_t leader, uint16_t term)> leader_changed;  // 0 = no leader
   std::function<void(uint8_t leader)> leader_lost;
   std::function<void(uint8_t a, uint8_t b)> two_leaders;
+  std::function<void(uint8_t node, uint64_t mac, uint16_t type_id)> id_assigned;
   std::function<void(uint8_t src, uint8_t reason)> estop;
 };
 
@@ -120,6 +130,7 @@ class Host {
   std::vector<NodeInfo> nodes() const;
   std::optional<NodeInfo> node(uint8_t id) const;
   std::vector<PeerHost> hosts() const;  // other hosts heard
+  std::vector<Assignment> id_table() const;
   // Block until node `id` is online (true) or the timeout passes.
   bool wait_for_node(uint8_t id, int timeout_ms);
   bool wait_for_lead(int timeout_ms);
@@ -135,6 +146,11 @@ class Host {
   void resign();
   void set_operator_link(bool up);
   void set_autonomy_ready(bool ready);
+  // Pin a board to an ID in this host's table (applies to its next id_request).
+  bool pin_id(uint64_t mac, uint8_t node_id, uint16_t type_id, std::string* error);
+  // Send id_assign to the board with this MAC. move = take it even if the board already has an
+  // ID (an auto-ID board while disarmed; DIP and fixed IDs ignore it). Any host may send it.
+  Status assign_id(uint64_t mac, uint8_t node_id, bool move);
 
   // --- settings (parameters), by name or index; the node's type or the protocol's -------
   Result get(uint8_t node, const std::string& param);
@@ -163,7 +179,7 @@ class Host {
   // --- NMT, E-stop -------------------------------------------------------------------------
   Status arm(uint8_t node);     // 0 = every node; leader only
   Status disarm(uint8_t node);  // 0 = every node; leader only
-  // Any nmt_command label (arm, disarm, reset, fault_reset, identify).
+  // Any nmt_command label (arm, disarm, reset, fault_reset, identify, forget_id).
   Status nmt(uint8_t node, const std::string& command);
   Status estop(uint8_t reason = 0);  // anyone, any time
   Status estop_release();            // leader only
@@ -196,7 +212,9 @@ class Host {
   void periodic(int64_t now, Notify& out);
   void on_election(const std::vector<ElectionEvent>& ev, int64_t now, Notify& out);
   void on_registry(const std::vector<RegistryEvent>& ev, Notify& out);
+  void handle_id_request(uint8_t src, const Values& v, Notify& out);
   void handle_service(uint8_t src, uint8_t dst, const Values& v, Notify& out);
+  bool should_allocate() const;
   bool send_msg(const Message& m, const Values& v, uint32_t dst, std::string* error = nullptr);
   void send_host_heartbeat(int64_t now);
   void drop_commands();
@@ -216,12 +234,13 @@ class Host {
 
   // Protocol messages, looked up by name once.
   const Message *m_estop_, *m_estop_release_, *m_sync_, *m_nmt_, *m_host_hb_, *m_lead_req_, *m_hb_,
-      *m_service_, *m_event_, *m_debug_level_;
+      *m_id_req_, *m_id_assign_, *m_service_, *m_event_, *m_debug_level_;
 
   mutable std::mutex mu_;
   std::condition_variable cv_;
   Election election_;
   NodeRegistry registry_;
+  IdAllocator allocator_;
   std::map<std::pair<uint8_t, uint8_t>, Pending*> pending_;
   std::map<std::pair<uint8_t, uint16_t>, Refresh> commands_;
   uint8_t next_txn_ = 0, lead_counter_ = 0, sync_counter_ = 0;

@@ -131,6 +131,7 @@ class IdLayout {
 
 struct NodeIds {
   uint32_t broadcast = 0, unassigned = 255, first = 1, last = 254;
+  uint32_t auto_first = 16, auto_last = 249;  // the range hosts hand out
 };
 
 class Schema {

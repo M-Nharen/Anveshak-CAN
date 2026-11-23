@@ -201,6 +201,8 @@ PYBIND11_MODULE(_anv_can, m) {
         d["unassigned"] = s.node_ids.unassigned;
         d["first"] = s.node_ids.first;
         d["last"] = s.node_ids.last;
+        d["auto_first"] = s.node_ids.auto_first;
+        d["auto_last"] = s.node_ids.auto_last;
         return d;
       })
       .def_property_readonly("id_layout", [](const Schema& s) {

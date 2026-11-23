@@ -16,11 +16,12 @@ def _label(schema: anv_can.Schema, enum: str, label: str) -> int:
 
 class FakeNode:
     def __init__(self, bus: anv_can.TestBus | anv_can.Link, schema: anv_can.Schema, type_name: str,
-                 node_id: int) -> None:
+                 node_id: int, mac: int = 0) -> None:
         self.s = schema
         self.t = schema.type(type_name)
         self.link = bus.connect() if isinstance(bus, anv_can.TestBus) else bus
-        self.id = node_id  # the board's own (DIP) ID
+        self.id = node_id
+        self.mac = mac
         self.armed = False
         self.estop = False
         self.leader = 0
@@ -31,7 +32,9 @@ class FakeNode:
         self.debug_level = 0
         self.debug_sets = 0
         self.info_pages = {"chip": 1, "fw_build": 0, "type_id": self.t.type_id,
-                           "schema_hash": self.t.schema_hash16}
+                           "schema_hash": self.t.schema_hash16,
+                           "mac_low": mac & 0xFFFFFFFF, "mac_high": mac >> 32}
+        self.auto_id = node_id == 0  # an ID from the hosts may be moved; a DIP/fixed one not
         self.params: dict[int, int] = {}
         for p in list(self.t.params) + list(self.s.protocol.params):
             self.params[p.index] = self._wire(p.type, p.default or 0)
@@ -60,7 +63,8 @@ class FakeNode:
 
     def _send(self, msg: anv_can.Message, values: dict[str, Any], dst: int,
               raw: bool = True) -> None:
-        self.link.send(anv_can.Frame(anv_can.make_id(self.s, msg, src=self.id, dst=dst),
+        src = self.id or self.s.node_ids["unassigned"]
+        self.link.send(anv_can.Frame(anv_can.make_id(self.s, msg, src=src, dst=dst),
                                      anv_can.encode(msg, values, raw=raw)))
 
     def _loop(self) -> None:
@@ -79,12 +83,16 @@ class FakeNode:
                 self.armed = False  # command watchdog
             if now >= next_hb:
                 next_hb = now + 0.05
+                if not self.id:
+                    mac = list(self.mac.to_bytes(6, "big"))
+                    self._send(p.message("id_request"), {"mac": mac, "type_id": self.t.type_id}, 0)
+                    continue
                 state = "estop" if self.estop else "armed" if self.armed else "idle"
                 self._send(p.message("heartbeat"), {
                     "state": state, "type_id": self.t.type_id, "schema_hash": self.t.schema_hash16,
                     "uptime_s": 5, "leader_seen": bool(self.leader)}, 0, raw=False)
             for port, mhz in self.rates.items():
-                if mhz and now >= next_stream.get(port, 0):
+                if mhz and now >= next_stream.get(port, 0) and self.id:
                     next_stream[port] = now + 1000.0 / mhz
                     self._send(self.t.message(port), {}, 0)
 
@@ -96,7 +104,7 @@ class FakeNode:
             return
         v = anv_can.decode(m, f.data, raw=True, labels=False)
         name = m.name if port <= self.s.protocol_last_port else None
-        to_me = dst in (0, self.id)
+        to_me = dst == 0 or (self.id and dst == self.id)
         if name == "host_heartbeat" and v["role"] == _label(self.s, "host_role", "leader"):
             if (src, v["term"]) != (self.leader, self.term):
                 self.armed = False
@@ -112,7 +120,11 @@ class FakeNode:
                 self.armed = False
         elif name == "debug_level" and to_me and src == self.leader:
             self.debug_level, self.debug_sets = v["level"], self.debug_sets + 1
-        elif name == "service" and dst == self.id:
+        elif name == "id_assign" and dst == self.s.node_ids["unassigned"]:
+            move = bool(v.get("flags", 0) & 1) and self.auto_id and not self.armed
+            if bytes(v["mac"]) == self.mac.to_bytes(6, "big") and (not self.id or move):
+                self.id = v["node_id"]
+        elif name == "service" and self.id and dst == self.id:
             self._service(src, v)
         elif m.kind == "command" and port > self.s.protocol_last_port and dst == self.id \
                 and src == self.leader:

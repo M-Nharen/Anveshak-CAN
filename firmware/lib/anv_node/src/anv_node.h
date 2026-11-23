@@ -12,8 +12,8 @@
  *
  * Built in, and not switchable: heartbeat with type ID and schema hash, arm/disarm, E-stop latch,
  * leader tracking, disarm on command timeout, on leader change or loss and on fault, and
- * duplicate-ID detection. The node ID is the application's (normally the board's DIP switches,
- * anv_node_esp32_read_dip()); nothing on the bus assigns IDs. Outputs are off unless the node is
+ * duplicate-ID detection. The node ID comes from the id_source setting (the hosts' ID service, or
+ * the board's DIP switches) unless cfg.node_id fixes it; see cfg.node_id. Outputs are off unless the node is
  * ARMED; the application's outputs_off hook is called on every way out of ARMED.
  *
  * No allocation, no RTOS, no clock of its own and nothing that blocks: the caller passes the
@@ -48,6 +48,20 @@ extern "C" {
 #endif
 #define ANV_NODE_LABEL_LEN 16u /* 4 chunks of 4 characters (SERVICE label_get / label_set) */
 
+/* ID request timing (id_source = auto, nothing saved yet): first request after 100..600 ms, then
+ * every 400..650 ms. The jitter keeps boards that power up together from asking at once. */
+#define ANV_NODE_ID_REQUEST_FIRST_MS 100u
+#define ANV_NODE_ID_REQUEST_EVERY_MS 400u
+#define ANV_NODE_ID_REQUEST_JITTER_MS 500u
+
+/* Where this node's ID came from (anv_node_id_origin). */
+typedef enum {
+    ANV_NODE_ID_NONE = 0,  /* none yet: asking the hosts */
+    ANV_NODE_ID_FIXED = 1, /* cfg.node_id, set in the sketch */
+    ANV_NODE_ID_DIP = 2,   /* id_source = dip: read from the switches */
+    ANV_NODE_ID_AUTO = 3,  /* id_source = auto: given by the hosts (saved, kept across reboots) */
+} anv_node_id_origin_t;
+
 typedef struct anv_node_s anv_node_t;
 
 /* Where settings, the black box and the OTA marker live (NVS on the ESP32, RAM in tests). Keys are short
@@ -77,9 +91,18 @@ typedef struct {
     const anv_node_storage_t *storage; /* NULL: nothing is saved (SAVE reports storage_error) */
     void *storage_ctx;
 
-    /* Required: this board's node ID, 1..254, normally read from its DIP switches. Keep it unique
-     * on the bus: two boards with one ID both detect it, raise id_conflict and go quiet. */
+    /* The node ID. Leave it 0 (the default) and the board's id_source setting decides:
+     *   auto (default): the ID the hosts gave it last time (saved), else ask them for one;
+     *   dip: read the switches with read_dip (only then are those pins touched); if they read 0,
+     *        or there is no read_dip, ask the hosts as for auto (event dip_id_invalid).
+     * 1..254 here: always this ID, whatever id_source says (fixed in the sketch).
+     * Two boards with one ID both notice: a DIP or fixed ID raises id_conflict and goes quiet,
+     * an auto ID drops it and asks the hosts again. */
     anv_node_id_t node_id;
+    uint16_t (*read_dip)(void *dip_ctx); /* the switches' value; anv_node_esp32 provides one */
+    void *dip_ctx;
+    /* id_source defaults to dip instead of auto on this build (a saved id_source still wins). */
+    bool dip_by_default;
 
     /* Flash access for firmware updates (anv_node_ota.h). NULL: OTA is refused (NO_BACKEND). */
     const anv_node_ota_backend_t *ota;
@@ -148,8 +171,11 @@ struct anv_node_s {
     anv_node_stats_t stats;
 
     uint8_t state;     /* anv_node_state_t */
-    anv_node_id_t id;  /* cfg.node_id */
-    bool id_conflict;  /* another board uses our ID: latched until reset, nothing more is sent */
+    anv_node_id_t id;  /* ANV_NODE_UNASSIGNED while asking the hosts */
+    uint8_t id_origin; /* anv_node_id_origin_t */
+    bool id_conflict;  /* DIP/fixed ID used by another board: latched until reset, nothing sent */
+    bool dip_invalid;  /* id_source = dip but the switches gave no valid ID (reported at begin) */
+    uint16_t dip_reading;
     bool estop_latched;
     bool fault_active; /* the application's fault condition */
     bool fault_latched;
@@ -176,6 +202,8 @@ struct anv_node_s {
     uint32_t start_ms;
     uint32_t now_ms;
     uint32_t heartbeat_next_ms;
+    uint32_t id_request_next_ms;
+    uint32_t rng;
     bool debug_timed;        /* the debug_level message set a timeout */
     uint32_t debug_until_ms;
     bool ready; /* anv_node_init succeeded */
@@ -190,12 +218,12 @@ struct anv_node_s {
     anv_node_diag_t diag;
 };
 
-/* Fill a config with defaults: no hooks, no ID (set cfg.node_id before anv_node_init). */
+/* Fill a config with defaults: no hooks, node_id 0 (the id_source setting decides). */
 void anv_node_config_default(anv_node_config_t *cfg);
 
-/* Check the config, build the tables from the type, load saved settings.
- * False if the type, link or outputs_off is missing, node_id isn't 1..254, or the type doesn't
- * fit the tables. */
+/* Check the config, build the tables from the type, load saved settings, pick the node ID.
+ * False if the type, link or outputs_off is missing, node_id is 255, or the type doesn't fit
+ * the tables. */
 bool anv_node_init(anv_node_t *node, const anv_node_config_t *cfg);
 /* Set the link filters, turn outputs off, call setup. Call once the link is started.
  * After a failed anv_node_init, begin and poll do nothing: the node stays off the bus. */
@@ -207,10 +235,14 @@ void anv_node_poll(anv_node_t *node, uint32_t now_ms);
 /* --- state ------------------------------------------------------------------------------- */
 uint8_t anv_node_state(const anv_node_t *node);   /* ANV_NODE_STATE_* */
 bool anv_node_armed(const anv_node_t *node);      /* the only state in which outputs may be on */
-anv_node_id_t anv_node_id(const anv_node_t *node);
-/* Another board is sending with this node's ID (check the DIP switches). Latched until reset;
- * the node is in FAULT and sends nothing (except E-stop). */
+anv_node_id_t anv_node_id(const anv_node_t *node); /* ANV_NODE_UNASSIGNED while asking */
+uint8_t anv_node_id_origin(const anv_node_t *node); /* anv_node_id_origin_t */
+/* Another board is sending with this node's DIP or fixed ID (check the switches). Latched until
+ * reset; the node is in FAULT and sends nothing (except E-stop). */
 bool anv_node_id_conflict(const anv_node_t *node);
+/* Drop an auto ID (and its saved copy) and ask the hosts again. Refused while armed, and for a
+ * DIP or fixed ID. Also NMT forget_id. */
+bool anv_node_forget_id(anv_node_t *node);
 bool anv_node_has_leader(const anv_node_t *node);
 anv_node_id_t anv_node_leader(const anv_node_t *node);
 const anv_node_stats_t *anv_node_stats(const anv_node_t *node);

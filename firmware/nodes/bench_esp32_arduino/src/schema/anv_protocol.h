@@ -12,7 +12,7 @@ extern "C" {
 /* protocol: Messages, parameters and events common to every node and host. */
 #define ANV_PROTOCOL_TYPE_ID 0u
 #define ANV_PROTOCOL_VERSION 1u
-#define ANV_PROTOCOL_WIRE_HASH 0x846fcaeeu
+#define ANV_PROTOCOL_WIRE_HASH 0xd0ea9c7du
 
 /* 29-bit identifier layout (protocol.yaml id_layout). */
 #define ANV_ID_PRIORITY_SHIFT 26u
@@ -28,6 +28,8 @@ typedef uint8_t anv_node_id_t;
 #define ANV_NODE_UNASSIGNED 255u
 #define ANV_NODE_FIRST 1u
 #define ANV_NODE_LAST 254u
+#define ANV_NODE_AUTO_FIRST 16u
+#define ANV_NODE_AUTO_LAST 249u
 #define ANV_PROTOCOL_LAST_PORT 63u
 #define ANV_MAX_PORT 1023u
 
@@ -50,6 +52,7 @@ static inline anv_node_id_t anv_id_src(uint32_t id)
 
 typedef enum {
     ANV_NODE_STATE_BOOT = 0,
+    ANV_NODE_STATE_UNASSIGNED = 1,
     ANV_NODE_STATE_IDLE = 2,
     ANV_NODE_STATE_ARMED = 3,
     ANV_NODE_STATE_FAULT = 4,
@@ -70,7 +73,13 @@ typedef enum {
     ANV_NMT_COMMAND_RESET = 3,
     ANV_NMT_COMMAND_FAULT_RESET = 4,
     ANV_NMT_COMMAND_IDENTIFY = 5,
+    ANV_NMT_COMMAND_FORGET_ID = 6,
 } anv_nmt_command_t;
+
+typedef enum {
+    ANV_ID_SOURCE_AUTO = 0,
+    ANV_ID_SOURCE_DIP = 1,
+} anv_id_source_t;
 
 typedef enum {
     ANV_SEVERITY_INFO = 0,
@@ -243,6 +252,33 @@ uint8_t anv_heartbeat_pack(uint8_t out[8], const anv_heartbeat_t *m);
 /* False if len is shorter than 8. */
 bool anv_heartbeat_unpack(anv_heartbeat_t *m, const uint8_t *data, uint8_t len);
 
+/* id_request: A board with no ID asks for one, from src 255. Repeated with jitter until answered. */
+#define ANV_ID_REQUEST_PORT 8u
+#define ANV_ID_REQUEST_PRIORITY 4u
+#define ANV_ID_REQUEST_LENGTH 8u
+typedef struct {
+    uint8_t mac[6]; /* bits 0..47 */
+    uint16_t type_id; /* bits 48..63 */
+} anv_id_request_t;
+/* Writes 8 bytes to out; returns the frame length. */
+uint8_t anv_id_request_pack(uint8_t out[8], const anv_id_request_t *m);
+/* False if len is shorter than 8. */
+bool anv_id_request_unpack(anv_id_request_t *m, const uint8_t *data, uint8_t len);
+
+/* id_assign: The allocator's answer, sent to dst 255. The board checks the MAC and keeps the ID. Also how a host moves an auto-ID board to another ID (only while disarmed; DIP and fixed IDs ignore it). */
+#define ANV_ID_ASSIGN_PORT 9u
+#define ANV_ID_ASSIGN_PRIORITY 4u
+#define ANV_ID_ASSIGN_LENGTH 8u
+typedef struct {
+    uint8_t mac[6]; /* bits 0..47 */
+    uint8_t node_id; /* bits 48..55 */
+    uint8_t flags; /* bits 56..63; bit 0 = move: take this ID even if the board has one */
+} anv_id_assign_t;
+/* Writes 8 bytes to out; returns the frame length. */
+uint8_t anv_id_assign_pack(uint8_t out[8], const anv_id_assign_t *m);
+/* False if len is shorter than 8. */
+bool anv_id_assign_unpack(anv_id_assign_t *m, const uint8_t *data, uint8_t len);
+
 /* service: Request and response share one layout. Requests carry an op; the response repeats it with a status. src and dst in the ID say who asked and who answers. */
 #define ANV_SERVICE_PORT 10u
 #define ANV_SERVICE_PRIORITY 4u
@@ -316,6 +352,7 @@ bool anv_text_unpack(anv_text_t *m, const uint8_t *data, uint8_t len);
 #define ANV_PARAM_DEBUG_LEVEL 0xf003u
 #define ANV_PARAM_LED_MODE 0xf004u
 #define ANV_PARAM_EVENT_RATE_LIMIT 0xf005u
+#define ANV_PARAM_ID_SOURCE 0xf006u
 
 /* Event codes */
 #define ANV_EVENT_CAN_ERROR_PASSIVE 0x0101u
@@ -337,6 +374,7 @@ bool anv_text_unpack(anv_text_t *m, const uint8_t *data, uint8_t len);
 #define ANV_EVENT_STORAGE_WRITE_FAIL 0x0605u
 #define ANV_EVENT_SELF_TEST_FAIL 0x0606u
 #define ANV_EVENT_ID_CONFLICT 0x0607u
+#define ANV_EVENT_DIP_ID_INVALID 0x0608u
 #define ANV_EVENT_UPDATE_STARTED 0x0701u
 #define ANV_EVENT_UPDATE_WRONG_TYPE 0x0702u
 #define ANV_EVENT_UPDATE_ROLLBACK 0x0703u
@@ -356,6 +394,7 @@ bool anv_text_unpack(anv_text_t *m, const uint8_t *data, uint8_t len);
 #define ANV_EVENT_BUS_ERROR_BURST 0x8009u
 #define ANV_EVENT_NO_LEADER 0x800au
 #define ANV_EVENT_LEAD_CHANGED 0x800bu
+#define ANV_EVENT_NODE_ID_ASSIGNED 0x800cu
 #define ANV_EVENT_UNKNOWN_TYPE 0x800du
 
 extern const anv_msg_desc_t anv_protocol_messages[];

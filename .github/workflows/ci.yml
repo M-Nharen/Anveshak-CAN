@@ -121,6 +121,12 @@ jobs:
           done
           ls -l "$RUNNER_TEMP"/*.bin
 
+      - name: Build the blank node (anv_board_begin, no pins in the sketch) for both chips
+        run: |
+          for chip in esp32 esp32s3; do
+            ~/.local/bin/anv-build firmware/nodes/blank_node --chip "$chip"
+          done
+
       - name: A sketch outside the repo with no src/schema (anv-build fills it in)
         run: |
           mkdir -p "$RUNNER_TEMP/plain_node"

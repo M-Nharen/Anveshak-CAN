@@ -522,6 +522,8 @@ def _id_layout_decls(schema: Schema) -> list[str]:
         f"#define ANV_NODE_UNASSIGNED {ids.unassigned}u",
         f"#define ANV_NODE_FIRST {ids.first}u",
         f"#define ANV_NODE_LAST {ids.last}u",
+        f"#define ANV_NODE_AUTO_FIRST {ids.auto_first}u",
+        f"#define ANV_NODE_AUTO_LAST {ids.auto_last}u",
         f"#define ANV_PROTOCOL_LAST_PORT {schema.protocol_last_port}u",
         f"#define ANV_MAX_PORT {schema.max_port}u",
         "",

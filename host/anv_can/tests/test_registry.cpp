@@ -1,4 +1,10 @@
-// Node registry, with a fake clock.
+// Node registry and ID allocator, with a fake clock and a temporary table file.
+#include <cstdio>
+#include <fstream>
+
+#include <unistd.h>
+
+#include "anv/host/allocator.hpp"
 #include "anv/host/registry.hpp"
 #include "check.hpp"
 
@@ -23,6 +29,10 @@ size_t count(const std::vector<RegistryEvent>& ev, RegistryEvent::Kind k) {
   size_t n = 0;
   for (const auto& e : ev) n += e.kind == k;
   return n;
+}
+
+std::string tmp_path(const char* name) {
+  return "/tmp/anv_host_test_" + std::to_string(getpid()) + "_" + name;
 }
 
 }  // namespace
@@ -82,6 +92,55 @@ TEST(slow_heartbeat_doesnt_flap) {
   CHECK(r.online(20));
   r.tick(4000 * kMs + 4000 * kMs, ev);
   CHECK(!r.online(20));
+}
+
+TEST(allocator_same_board_same_id) {
+  const std::string path = tmp_path("ids.txt");
+  std::remove(path.c_str());
+  IdAllocator a(10, 12, path);
+  std::string err;
+  CHECK(a.load(&err));
+  auto none = [](uint8_t) { return false; };
+  CHECK(a.assign(0xA4CF12345678ull, 2, none, &err) == 10);
+  CHECK(a.assign(0xA4CF12345679ull, 2, [](uint8_t id) { return id == 11; }, &err) == 12);  // 11 is taken
+  CHECK(a.assign(0xA4CF12345678ull, 2, none, &err) == 10);  // asked again: same answer
+  CHECK(a.assign(0x1ull, 3, none, &err) == 11);
+  CHECK(a.assign(0x2ull, 3, [](uint8_t) { return true; }, &err) == 0);  // everything in use
+  // Range full of remembered boards: a new board takes the ID of one that's not on the bus.
+  CHECK(a.assign(0x2ull, 3, [](uint8_t id) { return id != 12; }, &err) == 12);
+  CHECK(a.find_by_mac(0xA4CF12345679ull) == nullptr);
+
+  IdAllocator b(10, 12, path);  // the table survives a restart
+  CHECK(b.load(&err) && b.table().size() == 3);
+  CHECK(b.find_by_node(10) && b.find_by_node(10)->mac == 0xA4CF12345678ull && b.find_by_node(10)->type_id == 2);
+  CHECK(b.forget(10, &err) && !b.forget(10, &err));
+  CHECK(b.pin(0x3ull, 11, 4, &err) && b.find_by_node(11)->mac == 0x3ull && b.find_by_mac(0x1ull) == nullptr);
+  // A remembered ID that another board is using now: give a different one.
+  CHECK(b.assign(0x3ull, 4, [](uint8_t id) { return id == 11; }, &err) == 10);
+  std::remove(path.c_str());
+}
+
+TEST(allocator_table_errors) {
+  const std::string path = tmp_path("bad.txt");
+  {
+    std::ofstream f(path);
+    f << "# comment\n\na4cf12345678 20 2\nnot a line\n";
+  }
+  IdAllocator a(1, 254, path);
+  std::string err;
+  CHECK(!a.load(&err) && err.find(":4:") != std::string::npos);
+  std::remove(path.c_str());
+  IdAllocator missing(1, 254, tmp_path("missing.txt"));
+  CHECK(missing.load(&err) && missing.table().empty());
+}
+
+TEST(mac_text) {
+  uint8_t b[6] = {0xa4, 0xcf, 0x12, 0x34, 0x56, 0x78};
+  const uint64_t m = IdAllocator::mac_from_bytes(b);
+  CHECK(m == 0xA4CF12345678ull && IdAllocator::mac_to_string(m) == "a4:cf:12:34:56:78");
+  uint8_t back[6];
+  IdAllocator::mac_to_bytes(m, back);
+  CHECK(back[0] == 0xa4 && back[5] == 0x78);
 }
 
 TEST_MAIN()

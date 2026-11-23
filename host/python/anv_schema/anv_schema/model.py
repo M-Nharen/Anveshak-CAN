@@ -257,6 +257,8 @@ class NodeIds:
     unassigned: int
     first: int
     last: int
+    auto_first: int = 16  # the hosts hand out auto IDs from this range
+    auto_last: int = 249
 
 
 @dataclass

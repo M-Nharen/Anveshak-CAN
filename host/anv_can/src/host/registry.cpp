@@ -25,6 +25,8 @@ void NodeRegistry::on_heartbeat(const NodeHeartbeat& hb, int64_t now_ns, std::ve
   if (is_new) {
     n.id = hb.src;
     n.first_seen_ns = now_ns;
+    auto mac = macs_.find(hb.src);
+    if (mac != macs_.end()) n.mac = mac->second;
   } else if (n.online) {
     const double dt = static_cast<double>(now_ns - n.last_seen_ns) / 1e9;
     if (dt > 0) {
@@ -73,8 +75,15 @@ void NodeRegistry::tick(int64_t now_ns, std::vector<RegistryEvent>& events) {
   }
 }
 
+void NodeRegistry::set_mac(uint8_t node, uint64_t mac) {
+  macs_[node] = mac;
+  auto it = nodes_.find(node);
+  if (it != nodes_.end()) it->second.mac = mac;
+}
+
 void NodeRegistry::forget(uint8_t node) {
   nodes_.erase(node);
+  macs_.erase(node);
 }
 
 const NodeInfo* NodeRegistry::find(uint8_t node) const {

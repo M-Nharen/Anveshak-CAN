@@ -3,20 +3,17 @@
 // Every board runs this same sketch, built on the v2 libraries in firmware/lib: anv_link (TWAI,
 // 29-bit IDs), anv_proto and anv_node (the node runtime). The node type is `esp32_bench`
 // (schema/types/esp32_bench.yaml): a `status` stream with four numbers about the board and a
-// `blink` action. Its node ID comes from the DIP switches (board_pins.h); heartbeat, settings,
-// stream rates, arm/disarm, E-stop, leader tracking and duplicate-ID detection all come from
-// anv_node. See README.md.
+// `blink` action. Pins (CAN, LED, DIP switches) come from the library per chip
+// (anv_board_esp32.h). The node ID comes from the Pi's ID service, or from the DIP switches on a
+// board set to id_source = dip. Heartbeat, settings, stream rates, arm/disarm, E-stop, leader
+// tracking and duplicate-ID detection all come from anv_node. See README.md.
 //
 // src/schema/ is a copy of the generated code made by sync_schema.sh: edit schema/, not it.
 #include <Arduino.h>
 
-#include "anv_link.h"
-#include "anv_link_twai.h"
+#include "anv_board_esp32.h"
 #include "anv_node.h"
-#include "anv_node_esp32.h"
-#include "anv_node_ota_esp32.h"
 
-#include "board_pins.h"
 #include "led.h"
 #include "src/schema/anv_esp32_bench.h"
 #include "user_app.h"
@@ -26,16 +23,11 @@ constexpr uint32_t kIdentifyMs = 5000;  // NMT identify: blink this long
 constexpr size_t kTextMaxLen = 7;       // characters in one protocol `text` frame
 
 // ---------------- state ----------------
-static anv_twai_t s_twai;
-static anv_link_t s_link;
-static anv_node_t s_node;
-static anv_node_nvs_t s_nvs;
-static bool s_can_ok = false;
+static anv_board_t s_board;  // CAN, storage and the node, on this chip's pins
+static anv_node_t& s_node = s_board.node;
 static bool s_diag = true;
 static uint32_t s_blink_until = 0;
 static uint8_t s_text_seq = 0;
-static uint8_t s_dip = 0;
-static bool s_node_ok = false;  // false: bad node ID (DIP switches all off) or init failed
 
 // A build ID that changes with every compile, for the info page (the hosts show it).
 static uint32_t build_id() {
@@ -63,8 +55,8 @@ static bool hook_fill_stream(anv_node_t*, const anv_msg_desc_t* msg, uint8_t out
   anv_esp32_bench_status_t m;
   m.chip_temp = anv_esp32_bench_status_chip_temp_from_phys(temperatureRead());
   m.free_heap = static_cast<uint16_t>(ESP.getFreeHeap() / 1024u);
-  m.rx_frames = static_cast<uint16_t>(anv_link_stats(&s_link)->rx_frames);
-  m.tx_frames = static_cast<uint16_t>(s_twai.tx_ok);
+  m.rx_frames = static_cast<uint16_t>(anv_link_stats(&s_board.link)->rx_frames);
+  m.tx_frames = static_cast<uint16_t>(s_board.twai.tx_ok);
   anv_esp32_bench_status_pack(out, &m);
   return true;
 }
@@ -126,7 +118,7 @@ static void print_status() {
   Serial.printf("node=%u %s%s", anv_node_id(&s_node), anv_node_state_name(anv_node_state(&s_node)),
                 anv_node_id_conflict(&s_node) ? " ID-CONFLICT" : "");
   if (anv_node_has_leader(&s_node)) Serial.printf(" leader=%u", anv_node_leader(&s_node));
-  if (!s_can_ok || !anv_twai_get_info(&s_twai, &st, &rec)) {
+  if (!s_board.ok || !anv_twai_get_info(&s_board.twai, &st, &rec)) {
     Serial.println("  TWAI not running");
     return;
   }
@@ -138,12 +130,12 @@ static void print_status() {
     case TWAI_ERROR_BUS_OFF: bus = "BUS-OFF"; break;
     default: bus = "UNKNOWN"; break;
   }
-  const anv_link_stats_t* ls = anv_link_stats(&s_link);
+  const anv_link_stats_t* ls = anv_link_stats(&s_board.link);
   Serial.printf("  bus=%s tec=%u rec=%u buserr=%lu  tx_ok=%lu rx=%lu rx_drop=%lu restarts=%lu\n", bus,
                 static_cast<unsigned>(st.tx_error_count), static_cast<unsigned>(st.rx_error_count),
-                static_cast<unsigned long>(rec.bus_err_num), static_cast<unsigned long>(s_twai.tx_ok),
+                static_cast<unsigned long>(rec.bus_err_num), static_cast<unsigned long>(s_board.twai.tx_ok),
                 static_cast<unsigned long>(ls->rx_frames), static_cast<unsigned long>(ls->rx_overflow),
-                static_cast<unsigned long>(s_twai.restarts));
+                static_cast<unsigned long>(s_board.twai.restarts));
 }
 
 static void handle_command(char* line) {
@@ -157,7 +149,9 @@ static void handle_command(char* line) {
   } else if (strcmp(line, "id") == 0) {
     Serial.print("MAC ");
     print_mac(s_node.cfg.mac);
-    Serial.printf("  node ID %u (DIP %u)%s", anv_node_id(&s_node), s_dip,
+    static const char* const kOrigin[] = {"none yet: asking the Pi", "fixed", "DIP switches", "from the Pi"};
+    const uint8_t o = anv_node_id_origin(&s_node);
+    Serial.printf("  node ID %u (%s)%s", anv_node_id(&s_node), o < 4 ? kOrigin[o] : "?",
                   anv_node_id_conflict(&s_node) ? "  CONFLICT: another board has it" : "");
     Serial.printf("  type %s  build %08lx\n", anv_esp32_bench_type.name, static_cast<unsigned long>(build_id()));
   } else if (strncmp(line, "msg ", 4) == 0) {
@@ -193,74 +187,60 @@ static void poll_serial() {
 // ---------------- setup / loop ----------------
 void setup() {
   Serial.begin(115200);
-#if BENCH_TCAN_STB_GPIO >= 0
-  pinMode(BENCH_TCAN_STB_GPIO, OUTPUT);
-  digitalWrite(BENCH_TCAN_STB_GPIO, LOW);  // TCAN normal mode
-#endif
-  led_init();
 
   anv_node_config_t cfg;
   anv_node_config_default(&cfg);
   cfg.type = &anv_esp32_bench_type;
-  cfg.link = &s_link;
-  anv_node_nvs_init(&s_nvs, "anv_node");
-  cfg.storage = anv_node_nvs_ops();
-  cfg.storage_ctx = &s_nvs;
-  anv_node_esp32_identity(&cfg, &s_nvs);
   cfg.info.fw_build = build_id();
-  cfg.ota = anv_node_ota_esp32_backend();  // flashing over CAN: schema's `transfer` port, service `ota`
-  static const int dip_pins[] = BENCH_DIP_PINS;
-  s_dip = anv_node_esp32_read_dip(dip_pins, sizeof dip_pins / sizeof dip_pins[0]);
-  cfg.node_id = BENCH_DIP_ID_BASE + s_dip;  // read once at boot: change a switch, then reset
+  // node_id stays 0: the board's id_source setting decides (the Pi's ID service by default;
+  // `anv-host set can1 <id> id_source=dip --save` + reset for a board with switches).
   cfg.outputs_off = hook_outputs_off;
   cfg.setup = hook_setup;
   cfg.loop = hook_loop;
   cfg.fill_stream = hook_fill_stream;
   cfg.on_action = hook_action;
   cfg.on_identify = hook_identify;
-  cfg.on_reset = anv_node_esp32_restart;
   cfg.on_state_changed = hook_state_changed;
   cfg.on_frame = hook_frame;
 
+  anv_board_pins_t pins;
+  anv_board_pins_default(&pins);  // this chip's wiring; change a field here for an odd board
+  led_init(pins.led, pins.led_rgb);
+
   Serial.println();
-  Serial.print("=== Anveshak bench node (anv_node), MAC ");
-  print_mac(cfg.mac);
-  Serial.printf(", build %08lx, TX %d RX %d ===\n", static_cast<unsigned long>(build_id()), BENCH_CAN_TX_GPIO,
-                BENCH_CAN_RX_GPIO);
-
-  anv_twai_setup(&s_twai, BENCH_CAN_TX_GPIO, BENCH_CAN_RX_GPIO);
-  anv_link_init(&s_link, anv_twai_ops(), &s_twai);
-  anv_link_config_t link_cfg;
-  anv_link_config_default(&link_cfg);  // 500 kbit/s; anv_node sets the filters
-  s_can_ok = anv_link_start(&s_link, &link_cfg) == ANV_LINK_OK;
-  if (!s_can_ok) Serial.println("TWAI start FAILED: check the pins in board_pins.h");
-
-  s_node_ok = anv_node_init(&s_node, &cfg);
-  if (!s_node_ok) {
-    Serial.printf("anv_node_init FAILED: node ID %u is not valid (1-254). Set the DIP switches "
-                  "(all off = 0) and reset. The board stays off the bus until then.\n",
-                  unsigned(cfg.node_id));
+  Serial.printf("=== Anveshak bench node (anv_node), build %08lx, CAN TX %d RX %d ===\n",
+                static_cast<unsigned long>(build_id()), pins.can_tx, pins.can_rx);
+  if (!anv_board_begin(&s_board, &cfg, &pins)) {
+    Serial.printf("Start FAILED: %s\n", anv_board_error(&s_board));
+    return;
   }
-  anv_node_begin(&s_node, millis());
-  Serial.printf("Node ID %u (DIP switches = %u)\n", anv_node_id(&s_node), s_dip);
+  Serial.print("MAC ");
+  print_mac(s_node.cfg.mac);
+  if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
+    Serial.println("  no ID yet: asking the Pi's ID service (anv-host ids can1 --serve)");
+  } else {
+    Serial.printf("  node ID %u\n", anv_node_id(&s_node));
+  }
 }
 
 void loop() {
   const uint32_t now = millis();
-  anv_node_poll(&s_node, now);
+  anv_board_poll(&s_board);
 
   if (!user_owns_led()) {
     LedMode mode;
-    if (!s_can_ok || anv_link_stats(&s_link)->state == ANV_LINK_STATE_BUS_OFF) {
+    if (!s_board.ok || anv_link_stats(&s_board.link)->state == ANV_LINK_STATE_BUS_OFF) {
       mode = LedMode::BusOff;
     } else if ((int32_t)(now - s_blink_until) < 0) {
       mode = LedMode::Identify;
-    } else if (!s_node_ok || anv_node_id_conflict(&s_node)) {
+    } else if (anv_node_id_conflict(&s_node)) {
       mode = LedMode::IdConflict;
+    } else if (anv_node_id(&s_node) == ANV_NODE_UNASSIGNED) {
+      mode = LedMode::WaitingForId;
     } else {
       mode = LedMode::Running;
     }
-    led_update(now, mode, s_twai.tx_ok);
+    led_update(now, mode, s_board.twai.tx_ok);
   }
 
   static uint32_t last_diag = 0;
