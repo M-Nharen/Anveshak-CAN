@@ -346,6 +346,7 @@ def build_and_flash_can(
                 tool_id=a.tool_id,
                 timeout_ms=a.timeout_ms,
                 force=a.force,
+                change_type=a.change_type,
                 chunk=fl.DEFAULT_CHUNK,
             )
             for node in nodes:
@@ -407,6 +408,10 @@ def _parser() -> argparse.ArgumentParser:
         "--wait", type=float, default=2.0, help="(with --can) seconds to wait for nodes"
     )
     ap.add_argument("--timeout-ms", type=int, default=2000, help="(with --can) per-message timeout")
+    ap.add_argument(
+        "--change-type", action="store_true",
+        help="(with --can) the sketch is another type than the board runs: give it this type",
+    )
     ap.add_argument(
         "--force", action="store_true", help="(with --can) clear a half-finished update first"
     )

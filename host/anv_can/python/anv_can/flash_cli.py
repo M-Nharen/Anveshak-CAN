@@ -7,6 +7,7 @@ host/tools/, which stays for the current STM32/ESP32 apps.
     anv-flash flash vcan0 20 build/esp32.esp32.esp32/bench_esp32_arduino.ino.bin
     anv-flash flash vcan0 type:esp32_bench firmware.bin   # every node of that type, one by one
     anv-flash flash vcan0 20,21,22 firmware.bin           # a list
+    anv-flash flash vcan0 20 wheel.bin --type-id 10 --change-type   # make node 20 a wheel
     anv-flash flash vcan0 20 firmware.bin --force         # clear a stuck session first (rescue)
     anv-flash log vcan0 20
 
@@ -91,9 +92,16 @@ class Session:
         with contextlib.suppress(FlashError):
             self._exchange(bytes([SERVICE_OTA, OTA_ABORT]), expect_ack=False)
 
-    def begin(self, type_id: int, chip: int, image_len: int, crc: int) -> None:
+    def begin(self, type_id: int, chip: int, image_len: int, crc: int,
+              change_type: bool = False) -> None:
         body = bytes([SERVICE_OTA, OTA_BEGIN]) + struct.pack("<HBII", type_id, chip, image_len, crc)
+        if change_type:
+            body += bytes([1])  # flags bit 0: the image may be for another type (same chip)
         status, _ = self._exchange(body)
+        if status == 1:
+            hint = ("same chip? (a WROOM image can't go on an S3)" if change_type else
+                    "the board runs another type: add --change-type to give it this one")
+            raise FlashError(f"node {self.node}: BEGIN refused (wrong type or chip; {hint})")
         if status != 0:
             raise FlashError(f"node {self.node}: BEGIN refused ({OTA_STATUS.get(status, status)})")
 
@@ -186,7 +194,7 @@ def _flash_one(host: Host, schema: Schema, link: Link, a: argparse.Namespace, no
     if a.force:
         s.abort()
     try:
-        s.begin(type_id, chip, len(image), crc)
+        s.begin(type_id, chip, len(image), crc, change_type=getattr(a, "change_type", False))
         offset = 0
         while offset < len(image):
             chunk = image[offset:offset + a.chunk]
@@ -270,6 +278,8 @@ def _parser() -> argparse.ArgumentParser:
                     help="override the schema type_id (default: the node's own)")
     sp.add_argument("--chip", choices=sorted(CHIP_IDS),
                     help="override the chip (default: the node's own)")
+    sp.add_argument("--change-type", action="store_true",
+                    help="the image is for another node type (with --type-id): retype the board")
     sp.add_argument("--force", action="store_true",
                     help="clear a stuck session first (rescue a node left mid-update)")
     sp.set_defaults(fn=cmd_flash)

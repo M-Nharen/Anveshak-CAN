@@ -99,7 +99,8 @@ class FakeOtaNode:
                 self._ack(3)  # NOT_DISARMED
                 return
             type_id, chip, image_len, crc = struct.unpack_from("<HBII", body, 1)
-            if type_id != self.type_id or chip != self.chip:
+            change_type = len(body) > 12 and body[12] & 1
+            if (type_id != self.type_id and not change_type) or chip != self.chip:
                 self._ack(1)  # BAD_TYPE
                 return
             self._buf, self._len, self._crc = b"", image_len, crc
@@ -172,6 +173,12 @@ def test_flash_rejects_wrong_type(schema):
         code, out = run(bus, "flash", "x", "20", tmp)
         assert code == 1 and "wrong type or chip" in out
         assert o.commits == 0
+        # Another type on purpose: refused without --change-type, taken with it.
+        other = "999"  # neither the type the board runs nor the one it reports
+        code, out = run(bus, "flash", "x", "20", tmp, "--type-id", other)
+        assert code == 1 and "--change-type" in out and o.commits == 0
+        code, out = run(bus, "flash", "x", "20", tmp, "--type-id", other, "--change-type")
+        assert code == 0 and o.commits == 1
     finally:
         n.stop()
         o.stop()

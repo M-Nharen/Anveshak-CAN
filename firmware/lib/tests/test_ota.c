@@ -67,6 +67,22 @@ static bool send_and_ack(const uint8_t *body, uint16_t len, uint8_t *status, uin
     return true;
 }
 
+static bool begin_flags(uint16_t type_id, uint8_t chip, uint32_t image_len, uint32_t crc, uint8_t flags,
+                        uint8_t *status)
+{
+    uint8_t body[14]; /* service byte + the 13-byte BEGIN with flags */
+    body[0] = 1;      /* OTA */
+    body[1] = 0;      /* BEGIN */
+    body[2] = (uint8_t)type_id;
+    body[3] = (uint8_t)(type_id >> 8);
+    body[4] = chip;
+    put_u32(body + 5, image_len);
+    put_u32(body + 9, crc);
+    body[13] = flags;
+    uint32_t next_offset;
+    return send_and_ack(body, sizeof body, status, &next_offset);
+}
+
 static bool begin(uint16_t type_id, uint8_t chip, uint32_t image_len, uint32_t crc, uint8_t *status)
 {
     uint8_t body[13];
@@ -157,6 +173,20 @@ static void test_wrong_type_refused(void)
     const anv_link_frame_t *f = h_last(ANV_EVENT_PORT, NODE);
     MT_CHECK(f != NULL && anv_event_unpack(&ev, f->data, f->len) && ev.code == ANV_EVENT_UPDATE_WRONG_TYPE);
     MT_CHECK(anv_node_state(n) == ANV_NODE_STATE_IDLE); /* refused before it ever started */
+}
+
+static void test_change_type_on_purpose(void)
+{
+    boot();
+    uint8_t status;
+    MT_CHECK(begin_flags(TYPE_ID + 1, CHIP, 10, 0, 1u, &status)); /* change type: accepted */
+    MT_CHECK(status == 0u);
+    MT_CHECK(anv_node_state(n) == ANV_NODE_STATE_UPDATING);
+    abort_session();
+    MT_CHECK(begin_flags(TYPE_ID + 1, CHIP + 1, 10, 0, 1u, &status)); /* but never another chip */
+    MT_CHECK(status == 1u);
+    MT_CHECK(begin_flags(TYPE_ID + 1, CHIP, 10, 0, 0u, &status)); /* flag clear: refused */
+    MT_CHECK(status == 1u);
 }
 
 static void test_refused_while_armed(void)
@@ -311,6 +341,7 @@ int main(void)
 {
     MT_RUN(test_full_transfer_and_confirm);
     MT_RUN(test_wrong_type_refused);
+    MT_RUN(test_change_type_on_purpose);
     MT_RUN(test_refused_while_armed);
     MT_RUN(test_corrupted_image_rejected);
     MT_RUN(test_bad_offset_and_too_big);

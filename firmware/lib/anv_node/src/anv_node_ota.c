@@ -72,7 +72,10 @@ static void handle_begin(anv_node_t *n, anv_node_id_t src, const uint8_t *d, uin
         (uint32_t)d[4] | ((uint32_t)d[5] << 8) | ((uint32_t)d[6] << 16) | ((uint32_t)d[7] << 24);
     const uint32_t crc =
         (uint32_t)d[8] | ((uint32_t)d[9] << 8) | ((uint32_t)d[10] << 16) | ((uint32_t)d[11] << 24);
-    if (type_id != n->cfg.type->type_id || chip != n->cfg.info.chip) {
+    /* Another type only when the host says so on purpose (flags bit 0): a wheel image landing on a
+     * sensor board by mistake is refused. The chip must always match. */
+    const bool change_type = len >= 13u && (d[12] & 1u) != 0u;
+    if ((type_id != n->cfg.type->type_id && !change_type) || chip != n->cfg.info.chip) {
         anv_node_event(n, ANV_EVENT_UPDATE_WRONG_TYPE, type_id);
         send_ack(n, ANV_NODE_OTA_STATUS_BAD_TYPE, 0);
         return;

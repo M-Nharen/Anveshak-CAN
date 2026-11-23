@@ -49,6 +49,17 @@ Run it again after a `git pull` that changes `host/`. It only redoes what's need
 `arduino-cli` downloads the 64-bit ESP32 compiler, which can't start on the 32-bit system. The error
 names `ld-linux-aarch64.so.1`. The fix is the 64-bit OS.
 
+## Is everything working?
+
+```sh
+anv-host check can1      # every node: state, schema match, reply time, CAN error counters, drops
+```
+
+`OK` or `FAIL` per node, with the reason (`CAN error counters high` = wiring or termination,
+`schema_mismatch` = rebuild one side, `doesn't answer requests`, bus-offs, reboots). Exits 1 if
+anything is wrong, so scripts can use it. The bench sketch (`firmware/nodes/bench_esp32_arduino`)
+is the test board: flash it on any ESP32 and it shows up here, with LED codes and a serial console.
+
 ## Node IDs
 
 | Board | What to do | ID |
@@ -117,7 +128,7 @@ the same name). Start from `firmware/nodes/bench_esp32_arduino` or the guide's e
 | USB upload hangs at `Connecting...` | Hold BOOT on the board while it connects; try the other USB port on an S3 |
 | `node N: not heard on can1` | Wrong ID (`anv-host ids can1`; check the DIP switches on a `dip` board), board not on the bus, or `can1` down: `ip -details link show can1` |
 | `node N: armed, skipping` | Disarm it first: `anv-host disarm can1 N --take-lead` |
-| `wrong type or chip` | The sketch is for another node type than the board runs. To change a board's type, flash it over USB once |
+| `wrong type or chip` | The sketch is for another node type than the board runs. To give the board this type on purpose: add `--change-type` (`anv-build <sketch> 17 --can can1 --change-type`). A board still on firmware from before this option: flash it over USB once. The chip must always match |
 | Out of memory while compiling (Pi with 1 GB) | Add swap: `sudo dphys-swapfile swapoff; sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile; sudo dphys-swapfile setup; sudo dphys-swapfile swapon` |
 
 `anv-build -v` shows the full compiler output.

@@ -1,6 +1,7 @@
 """anv-host: see and drive the nodes on the bus, as a host would.
 
     anv-host list vcan0                          # nodes (and other hosts) heard
+    anv-host check vcan0                         # is every node healthy? (exit 1 if not)
     anv-host get vcan0 20                        # every setting of node 20
     anv-host get vcan0 20 kp_0 heartbeat_hz
     anv-host set vcan0 20 kp_0=12.5 --save
@@ -54,6 +55,68 @@ def _open(open_link: Callable[[str], Link] | None, name: str) -> Link:
 
 def _mac(mac: int) -> str:
     return ":".join(f"{(mac >> s) & 0xFF:02x}" for s in range(40, -8, -8)) if mac else "-"
+
+
+def _check_node(host: Host, schema: Schema, n: Any, seconds: float) -> tuple[list[str], list[str]]:
+    """One node's health: (facts, problems)."""
+    facts: list[str] = []
+    problems: list[str] = []
+    if not n.online:
+        return facts, ["offline (no heartbeat)"]
+    if n.compat != "ok":
+        problems.append(f"{n.compat}: its type's YAML differs from this Pi's schema (rebuild one)")
+    state = enum_label(schema, "node_state", n.state)
+    if state in ("fault", "estop", "unassigned"):
+        problems.append(f"state {state}")
+    try:
+        set_hz = host.get(n.id, "heartbeat_hz")
+        t0 = time.monotonic()
+        host.get(n.id, "heartbeat_hz")
+        facts.append(f"reply {1000 * (time.monotonic() - t0):.0f} ms")
+        if seconds >= 2 and n.heartbeat_hz < 0.7 * set_hz:
+            problems.append(f"heartbeat {n.heartbeat_hz:.1f} Hz, set {set_hz:.0f} (frames lost?)")
+        tec, rec = int(host.info(n.id, "can_tec")), int(host.info(n.id, "can_rec"))
+        bus_off, dropped = int(host.info(n.id, "bus_off_count")), int(host.info(n.id, "rx_dropped"))
+        facts.append(f"TEC/REC {tec}/{rec}")
+        if tec >= 96 or rec >= 96:
+            problems.append(f"CAN error counters high (TEC {tec}, REC {rec}): wiring/termination")
+        if bus_off:
+            problems.append(f"{bus_off} bus-off(s) since boot")
+        if dropped:
+            problems.append(f"{dropped} received frame(s) dropped")
+    except HostError as e:
+        problems.append(f"doesn't answer requests ({e})")
+    if n.reboots:
+        problems.append(f"rebooted {n.reboots}x while watched")
+    if n.fault_active:
+        problems.append("fault active")
+    return facts, problems
+
+
+def cmd_check(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
+    """Listen a while, then ask every node how it is. Exit 1 if anything looks wrong."""
+    time.sleep(max(a.wait, a.duration))
+    nodes = sorted(host.nodes(), key=lambda n: n.id)
+    hosts = [h for h in host.hosts() if h.online]
+    if not nodes:
+        print("no nodes heard: is the bus up (ip -details link show), the boards powered, "
+              "the wiring and 120 ohm termination right?", file=out)
+        return 1
+    bad = 0
+    for n in nodes:
+        tname = n.type.name if n.type is not None else f"type {n.type_id}"
+        state = enum_label(schema, "node_state", n.state) if n.online else "offline"
+        facts, problems = _check_node(host, schema, n, max(a.wait, a.duration))
+        verdict = "OK  " if not problems else "FAIL"
+        bad += bool(problems)
+        print(f"{verdict} {n.id:>3}  {tname:<18} {state:<9} {n.heartbeat_hz:>5.1f} Hz  "
+              f"up {n.uptime_s}s  {'  '.join(facts)}", file=out)
+        for p in problems:
+            print(f"           - {p}", file=out)
+    leaders = [h.id for h in hosts if h.role == "leader"]
+    print(f"{len(nodes)} node(s), {bad} with problems; hosts {[h.id for h in hosts] or 'none'}"
+          f"{', leader ' + str(leaders[0]) if leaders else ', no leader'}", file=out)
+    return 1 if bad else 0
 
 
 def cmd_list(host: Host, schema: Schema, a: argparse.Namespace, out: TextIO) -> int:
@@ -346,6 +409,9 @@ def _parser() -> argparse.ArgumentParser:
         return sp
 
     p("list", cmd_list, "nodes and hosts on the bus")
+    sp = p("check", cmd_check, "health check of every node (exit 1 if any problem)")
+    sp.add_argument("--duration", type=float, default=3.0,
+                    help="seconds to listen first (default 3)")
     sp = p("get", cmd_get, "read settings")
     sp.add_argument("node", type=_node_arg)
     sp.add_argument("params", nargs="*", help="names or indices (default: all)")

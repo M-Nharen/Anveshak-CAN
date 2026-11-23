@@ -6,7 +6,9 @@
  * Wire format, after ISO-TP reassembly (the first byte, the transfer_service itself, is
  * stripped by anv_node before it reaches here):
  *
- *   BEGIN (host -> node, 12 bytes): msg_type=0, type_id(u16), chip(u8), image_len(u32), crc32(u32)
+ *   BEGIN (host -> node, 12 or 13 bytes): msg_type=0, type_id(u16), chip(u8), image_len(u32),
+ *         crc32(u32), [flags(u8)]. The image must be for this node's type and chip; flags bit 0
+ *         (change type) lets it be for another type (same chip): `--change-type` on the tools.
  *   DATA  (host -> node): msg_type=1, offset(u32), then up to ANV_NODE_OTA_MAX_CHUNK bytes
  *   END   (host -> node, 1 byte): msg_type=2 -- verify the CRC, apply and reboot
  *   ABORT (host -> node, 1 byte): msg_type=3 -- give up, stay on the running image

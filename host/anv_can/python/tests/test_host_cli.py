@@ -151,3 +151,23 @@ def test_id_service_and_set_id(schema, tmp_path, monkeypatch):
     assert eventually(lambda: a.id == 5, 3.0)
     for n in (a, b, dip):
         n.stop()
+
+
+def test_check(schema):
+    bus = anv_can.TestBus()
+    good = FakeNode(bus, schema, "esp32_bench", 20)
+    sick = FakeNode(bus, schema, "esp32_bench", 21)
+    sick.info_pages["can_tec"] = 130  # error-passive: bad wiring
+    sick.info_pages["bus_off_count"] = 2
+    code, out = run(bus, "check", "x", "--duration", "1")
+    lines = out.splitlines()
+    assert code == 1
+    assert any(ln.startswith("OK") and " 20  esp32_bench" in ln for ln in lines)
+    assert any(ln.startswith("FAIL") and " 21  esp32_bench" in ln for ln in lines)
+    assert "CAN error counters high" in out and "2 bus-off(s)" in out
+    sick.stop()
+    code, out = run(bus, "check", "x", "--duration", "1")  # only the good one left
+    assert code == 0 and "1 node(s), 0 with problems" in out
+    good.stop()
+    code, out = run(bus, "check", "x", "--duration", "0.5")
+    assert code == 1 and "no nodes heard" in out

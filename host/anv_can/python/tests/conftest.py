@@ -33,7 +33,8 @@ class FakeNode:
         self.debug_sets = 0
         self.info_pages = {"chip": 1, "fw_build": 0, "type_id": self.t.type_id,
                            "schema_hash": self.t.schema_hash16,
-                           "mac_low": mac & 0xFFFFFFFF, "mac_high": mac >> 32}
+                           "mac_low": mac & 0xFFFFFFFF, "mac_high": mac >> 32,
+                           "can_tec": 0, "can_rec": 0, "bus_off_count": 0, "rx_dropped": 0}
         self.auto_id = node_id == 0  # an ID from the hosts may be moved; a DIP/fixed one not
         self.params: dict[int, int] = {}
         for p in list(self.t.params) + list(self.s.protocol.params):
