@@ -8,6 +8,11 @@
  * index and checked against the current type on load, so a changed schema keeps what still
  * fits and falls back to defaults for the rest. */
 #define SAVE_KEY_PARAMS "anv_params"
+/* The type_id the saved settings belong to. After a type change only the protocol's settings
+ * (0xF000 and up: id_source, heartbeat, timeouts) are kept: another type's index 0 is a different
+ * setting, and its value must not turn up in this one. */
+#define SAVE_KEY_TYPE "anv_type"
+#define PROTOCOL_PARAM_FIRST 0xF000u
 #define SAVE_MAGIC 0x314E5641u /* "AVN1" */
 #define SAVE_HEADER 12u
 #define SAVE_ENTRY 8u
@@ -175,10 +180,18 @@ void anv_node_i_load_saved(anv_node_t *n)
         n->params_corrupt = true;
         return;
     }
+    uint8_t tb[2];
+    const bool type_known = st->load(n->cfg.storage_ctx, SAVE_KEY_TYPE, tb, sizeof tb) == sizeof tb;
+    /* Not known: saved by firmware from before this check; assume the same type. */
+    const bool same_type = !type_known || get_u16(tb) == n->cfg.type->type_id;
+    n->type_changed = !same_type;
     memcpy(n->label, buf + SAVE_HEADER, ANV_NODE_LABEL_LEN);
     const uint8_t *e = buf + SAVE_HEADER + ANV_NODE_LABEL_LEN;
     for (uint16_t k = 0; k < count; k++, e += SAVE_ENTRY) {
         const uint16_t index = get_u16(e + 2);
+        if (!same_type && (e[0] != SAVE_KIND_PARAM || index < PROTOCOL_PARAM_FIRST)) {
+            continue; /* the old type's settings and stream rates */
+        }
         anv_value_t v;
         v.u = get_u32(e + 4);
         if (e[0] == SAVE_KIND_PARAM) {
@@ -237,6 +250,9 @@ uint8_t anv_node_save(anv_node_t *n)
         anv_node_event(n, ANV_EVENT_STORAGE_WRITE_FAIL, 0);
         return ANV_SERVICE_STATUS_STORAGE_ERROR;
     }
+    uint8_t tb[2];
+    put_u16(tb, n->cfg.type->type_id);
+    (void)st->save(n->cfg.storage_ctx, SAVE_KEY_TYPE, tb, sizeof tb); /* whose settings these are */
     n->unsaved = false;
     return ANV_SERVICE_STATUS_OK;
 }

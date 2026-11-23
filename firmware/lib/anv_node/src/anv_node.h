@@ -186,6 +186,7 @@ struct anv_node_s {
     uint16_t n_params;
     bool unsaved;
     bool params_corrupt; /* set by anv_node_i_load_saved(); reported in anv_node_begin() */
+    bool type_changed;   /* saved settings were another type's: only the protocol's were kept */
     char label[ANV_NODE_LABEL_LEN];
 
     anv_node_stream_t streams[ANV_NODE_MAX_STREAMS];

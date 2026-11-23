@@ -2,6 +2,7 @@
  * actions and the label. Uses the example motor_controller type. */
 #include <string.h>
 
+#include "anv_esp32_bench.h"
 #include "anv_motor_controller.h"
 #include "minitest.h"
 #include "node_harness.h"
@@ -146,6 +147,39 @@ static void test_save_and_reboot(void)
     MT_CHECK(anv_node_get(n, KP_0, &v) && v.f == 3.25f);
 }
 
+/* A board flashed with another type (--change-type) keeps only the protocol's settings: the old
+ * type's index 0 is some other setting, and its value must not turn up in the new one. */
+static void test_type_change_keeps_only_protocol_settings(void)
+{
+    h_reset();
+    boot();
+    MT_CHECK(svc(ANV_SERVICE_OP_SET, KP_0, f32(3.25f)) == ANV_SERVICE_STATUS_OK);
+    MT_CHECK(svc(ANV_SERVICE_OP_SET, ANV_PARAM_HEARTBEAT_HZ, 20u) == ANV_SERVICE_STATUS_OK);
+    MT_CHECK(svc(ANV_SERVICE_OP_SET_RATE, THERMAL, 5000u) == ANV_SERVICE_STATUS_OK);
+    MT_CHECK(svc(ANV_SERVICE_OP_SAVE, 0, 0) == ANV_SERVICE_STATUS_OK);
+
+    /* Same storage, new firmware of another type. */
+    h_config(0, &anv_esp32_bench_type)->node_id = NODE;
+    MT_CHECK(h_start(0));
+    anv_node_t *n = &h_nodes[0].node;
+    anv_value_t v;
+    MT_CHECK(anv_node_get(n, ANV_PARAM_HEARTBEAT_HZ, &v) && v.u == 20u); /* protocol: kept */
+    MT_CHECK(!n->unsaved);
+
+    /* Back to the first type: its old values are gone for good (re-saved as the other type's). */
+    boot();
+    n = &h_nodes[0].node;
+    MT_CHECK(anv_node_get(n, KP_0, &v) && v.f == 10.0f);
+    MT_CHECK(anv_node_stream_rate(n, THERMAL) == 1000u);
+    MT_CHECK(anv_node_get(n, ANV_PARAM_HEARTBEAT_HZ, &v) && v.u == 20u);
+
+    /* Same type again: everything comes back as saved. */
+    MT_CHECK(svc(ANV_SERVICE_OP_SET, KP_0, f32(4.5f)) == ANV_SERVICE_STATUS_OK);
+    MT_CHECK(svc(ANV_SERVICE_OP_SAVE, 0, 0) == ANV_SERVICE_STATUS_OK);
+    boot();
+    MT_CHECK(anv_node_get(&h_nodes[0].node, KP_0, &v) && v.f == 4.5f);
+}
+
 static void test_storage_problems(void)
 {
     h_reset();
@@ -257,6 +291,7 @@ int main(void)
     MT_RUN(test_set_checks);
     MT_RUN(test_disarmed_only);
     MT_RUN(test_save_and_reboot);
+    MT_RUN(test_type_change_keeps_only_protocol_settings);
     MT_RUN(test_storage_problems);
     MT_RUN(test_stream_rates);
     MT_RUN(test_info_and_actions);

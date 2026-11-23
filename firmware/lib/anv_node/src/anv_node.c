@@ -760,6 +760,9 @@ bool anv_node_init(anv_node_t *n, const anv_node_config_t *cfg)
         n->rng = 1u;
     }
     n->ready = true;
+    if (n->type_changed) {
+        (void)anv_node_save(n); /* rewrite them as this type's, so the old ones never come back */
+    }
     return true;
 }
 
