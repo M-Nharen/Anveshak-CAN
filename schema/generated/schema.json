@@ -1631,6 +1631,358 @@
    "events": []
   },
   {
+   "name": "wheel",
+   "type_id": 10,
+   "version": 1,
+   "description": "One drive wheel with an encoder.",
+   "wire_hash": 2381697126,
+   "enums": {
+    "mode": {
+     "coast": 0,
+     "brake": 1,
+     "velocity": 2
+    }
+   },
+   "messages": [
+    {
+     "name": "setpoint",
+     "port": 64,
+     "priority": 1,
+     "sender": "leader",
+     "kind": "command",
+     "length": 3,
+     "watchdog_ms": 100,
+     "apply": "sync",
+     "rate": null,
+     "description": "",
+     "fields": [
+      {
+       "name": "mode",
+       "type": "u8",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": {
+        "name": "mode",
+        "values": {
+         "coast": 0,
+         "brake": 1,
+         "velocity": 2
+        }
+       },
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "speed",
+       "type": "i16",
+       "start_bit": 8,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "rad/s",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    },
+    {
+     "name": "feedback",
+     "port": 65,
+     "priority": 2,
+     "sender": "node",
+     "kind": "stream",
+     "length": 3,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 50.0,
+      "min": 0.0,
+      "max": 200.0
+     },
+     "description": "",
+     "fields": [
+      {
+       "name": "speed",
+       "type": "i16",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "rad/s",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "current",
+       "type": "u8",
+       "start_bit": 16,
+       "count": 1,
+       "scale": 0.2,
+       "offset": 0.0,
+       "unit": "A",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    }
+   ],
+   "params": [
+    {
+     "index": 0,
+     "name": "kp",
+     "type": "f32",
+     "default": 10.0,
+     "min": 0.0,
+     "max": 1000.0,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 1,
+     "name": "max_speed",
+     "type": "f32",
+     "default": 50.0,
+     "min": 0.0,
+     "max": 300.0,
+     "unit": "rad/s",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": ""
+    },
+    {
+     "index": 2,
+     "name": "invert",
+     "type": "bool",
+     "default": 0.0,
+     "min": null,
+     "max": null,
+     "unit": "",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": true,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": "Reverse this wheel (mounted mirrored)"
+    }
+   ],
+   "actions": [
+    {
+     "index": 1,
+     "name": "zero_counts",
+     "arg": null,
+     "arg_min": null,
+     "arg_max": null,
+     "arg_unit": "",
+     "disarmed_only": false,
+     "description": "Reset the encoder count"
+    }
+   ],
+   "events": [
+    {
+     "code": 16385,
+     "name": "overcurrent",
+     "severity": "error",
+     "description": "Over the limit (detail = A x 10)",
+     "cause": ""
+    }
+   ]
+  },
+  {
+   "name": "temp_sensor",
+   "type_id": 11,
+   "version": 1,
+   "description": "One temperature probe with an alarm threshold.",
+   "wire_hash": 1621818360,
+   "enums": {},
+   "messages": [
+    {
+     "name": "reading",
+     "port": 64,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 3,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 5.0,
+      "min": 0.0,
+      "max": 50.0
+     },
+     "description": "",
+     "fields": [
+      {
+       "name": "temp",
+       "type": "i16",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 0.01,
+       "offset": 0.0,
+       "unit": "degC",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "alarm",
+       "type": "bool",
+       "start_bit": 16,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    }
+   ],
+   "params": [
+    {
+     "index": 0,
+     "name": "alarm_c",
+     "type": "f32",
+     "default": 60.0,
+     "min": -40.0,
+     "max": 150.0,
+     "unit": "degC",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": "Raise overheat above this"
+    },
+    {
+     "index": 1,
+     "name": "offset_c",
+     "type": "f32",
+     "default": 0.0,
+     "min": -10.0,
+     "max": 10.0,
+     "unit": "degC",
+     "access": "rw",
+     "persist": true,
+     "disarmed_only": false,
+     "reboot_required": false,
+     "group": "",
+     "enum": null,
+     "description": "Added to every reading (calibration)"
+    }
+   ],
+   "actions": [
+    {
+     "index": 1,
+     "name": "self_test",
+     "arg": null,
+     "arg_min": null,
+     "arg_max": null,
+     "arg_unit": "",
+     "disarmed_only": false,
+     "description": "Check the probe answers"
+    }
+   ],
+   "events": [
+    {
+     "code": 16385,
+     "name": "overheat",
+     "severity": "warning",
+     "description": "Above alarm_c (detail = degC)",
+     "cause": ""
+    }
+   ]
+  },
+  {
+   "name": "hello",
+   "type_id": 20,
+   "version": 1,
+   "description": "My first node. Blinks its LED and reports how many times it has blinked.",
+   "wire_hash": 423539083,
+   "enums": {},
+   "messages": [
+    {
+     "name": "status",
+     "port": 64,
+     "priority": 3,
+     "sender": "node",
+     "kind": "stream",
+     "length": 5,
+     "watchdog_ms": 0,
+     "apply": "now",
+     "rate": {
+      "default": 2.0,
+      "min": 0.0,
+      "max": 20.0
+     },
+     "description": "",
+     "fields": [
+      {
+       "name": "blinks",
+       "type": "u32",
+       "start_bit": 0,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      },
+      {
+       "name": "led_on",
+       "type": "bool",
+       "start_bit": 32,
+       "count": 1,
+       "scale": 1.0,
+       "offset": 0.0,
+       "unit": "",
+       "min": null,
+       "max": null,
+       "enum": null,
+       "const": null,
+       "description": ""
+      }
+     ]
+    }
+   ],
+   "params": [],
+   "actions": [],
+   "events": []
+  },
+  {
    "name": "blank",
    "type_id": 99,
    "version": 1,

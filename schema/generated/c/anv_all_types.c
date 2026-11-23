@@ -4,6 +4,9 @@
 
 const anv_type_desc_t *const anv_all_types[] = {
     &anv_esp32_bench_type,
+    &anv_wheel_type,
+    &anv_temp_sensor_type,
+    &anv_hello_type,
     &anv_blank_type,
     &anv_motor_controller_type,
     &anv_analog_sensor_type,

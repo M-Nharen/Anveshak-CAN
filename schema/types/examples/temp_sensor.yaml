@@ -1,0 +1,25 @@
+name: temp_sensor
+type_id: 11
+version: 1
+description: One temperature probe with an alarm threshold.
+
+messages:
+  - name: reading
+    port: 64
+    kind: stream
+    rate: {default: 5, min: 0, max: 50}
+    fields:
+      - {name: temp, type: i16, scale: 0.01, unit: degC}
+      - {name: alarm, type: bool}
+
+params:
+  - {index: 0x0000, name: alarm_c, type: f32, min: -40, max: 150, default: 60, unit: degC,
+     description: "Raise overheat above this"}
+  - {index: 0x0001, name: offset_c, type: f32, min: -10, max: 10, default: 0, unit: degC,
+     description: "Added to every reading (calibration)"}
+
+actions:
+  - {index: 1, name: self_test, description: "Check the probe answers"}
+
+events:
+  - {code: 0x4001, name: overheat, severity: warning, description: "Above alarm_c (detail = degC)"}

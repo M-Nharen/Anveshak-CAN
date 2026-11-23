@@ -127,6 +127,14 @@ jobs:
             ~/.local/bin/anv-build firmware/nodes/blank_node --chip "$chip"
           done
 
+      - name: Build the guide's example sketches (firmware/nodes/examples) for both chips
+        run: |
+          for sketch in firmware/nodes/examples/*/; do
+            for chip in esp32 esp32s3; do
+              ~/.local/bin/anv-build "$sketch" --chip "$chip"
+            done
+          done
+
       - name: A sketch outside the repo with no src/schema (anv-build fills it in)
         run: |
           mkdir -p "$RUNNER_TEMP/plain_node"

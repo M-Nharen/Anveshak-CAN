@@ -1,0 +1,37 @@
+name: wheel
+type_id: 10
+version: 1
+description: One drive wheel with an encoder.
+
+enums:
+  mode: [coast, brake, velocity]
+
+messages:
+  - name: setpoint
+    port: 64
+    kind: command
+    watchdog_ms: 100
+    apply: sync
+    fields:
+      - {name: mode, type: u8, enum: mode}
+      - {name: speed, type: i16, scale: 0.01, unit: rad/s}
+
+  - name: feedback
+    port: 65
+    kind: stream
+    rate: {default: 50, min: 0, max: 200}
+    fields:
+      - {name: speed, type: i16, scale: 0.01, unit: rad/s}
+      - {name: current, type: u8, scale: 0.2, unit: A}
+
+params:
+  - {index: 0x0000, name: kp, type: f32, min: 0, max: 1000, default: 10, disarmed_only: true}
+  - {index: 0x0001, name: max_speed, type: f32, min: 0, max: 300, default: 50, unit: rad/s}
+  - {index: 0x0002, name: invert, type: bool, default: 0, disarmed_only: true,
+     description: "Reverse this wheel (mounted mirrored)"}
+
+actions:
+  - {index: 1, name: zero_counts, description: Reset the encoder count}
+
+events:
+  - {code: 0x4001, name: overcurrent, severity: error, description: "Over the limit (detail = A x 10)"}

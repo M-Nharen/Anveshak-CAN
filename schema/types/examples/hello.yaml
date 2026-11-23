@@ -1,0 +1,13 @@
+name: hello              # the C names start with anv_hello_
+type_id: 20              # any number not used by another type (anv-schema show lists them)
+version: 1
+description: My first node. Blinks its LED and reports how many times it has blinked.
+
+messages:
+  - name: status         # node -> everyone
+    port: 64             # 64..1023: this type's own messages
+    kind: stream         # sent repeatedly, at a rate the Pi can change
+    rate: {default: 2, min: 0, max: 20}   # times per second
+    fields:
+      - {name: blinks, type: u32}         # how many times the LED has turned on
+      - {name: led_on, type: bool}        # is it on right now

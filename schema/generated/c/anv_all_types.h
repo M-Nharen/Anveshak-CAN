@@ -5,6 +5,9 @@
 
 #include "anv_protocol.h"
 #include "anv_esp32_bench.h"
+#include "anv_wheel.h"
+#include "anv_temp_sensor.h"
+#include "anv_hello.h"
 #include "anv_blank.h"
 #include "anv_motor_controller.h"
 #include "anv_analog_sensor.h"
@@ -13,7 +16,7 @@
 extern "C" {
 #endif
 
-#define ANV_N_TYPES 4u
+#define ANV_N_TYPES 7u
 extern const anv_type_desc_t *const anv_all_types[];
 /* NULL if no type has this ID. */
 const anv_type_desc_t *anv_type_by_id(uint16_t type_id);
